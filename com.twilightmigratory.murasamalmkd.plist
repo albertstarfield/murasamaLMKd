@@ -7,7 +7,7 @@
     <string>com.twilightmigratory.murasamalmkd</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/murasamaLMKd/murasamalmkd</string>
+        <string>/usr/local/murasamaLMKd/start.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true />

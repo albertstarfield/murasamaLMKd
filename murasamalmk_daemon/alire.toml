@@ -1,0 +1,14 @@
+name = "murasamalmk_daemon"
+description = "Ada/SPARK macOS memory-pressure and thrashing-mitigation daemon"
+version = "0.1.0-dev"
+
+authors = ["Albert Starfield"]
+maintainers = ["Albert Starfield <albertstarfield2001@gmail.com>"]
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
+website = ""
+tags = []
+
+executables = ["murasamalmk_daemon"]
+
+[[depends-on]]
+gnatprove = "^15.1.0"

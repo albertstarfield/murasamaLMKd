@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to the plist file
-PLIST_NAME=com.xnu.murasamalmkd.plist
+PLIST_NAME=com.twilightmigratory.murasamalmkd.plist
 PLIST_PATH="/Library/LaunchDaemons/${PLIST_NAME}"
 cp ${PLIST_NAME} ${PLIST_PATH}
 

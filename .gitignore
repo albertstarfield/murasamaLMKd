@@ -1,1 +1,12 @@
 *.csv
+*enticinst.txt
+
+# GPRbuild and Alire compiled object files
+**/obj/
+**/alire/
+
+# Python compiled cache directories
+**/__pycache__/
+
+# Python virtual environments
+**/venv/
