@@ -18,7 +18,6 @@ package body Murasama_Telemetry is
       Front_Name              : String;
       Mitigation_Active       : Boolean
    ) is
-      File : Ada.Text_IO.File_Type;
       Now  : constant Ada.Calendar.Time := Ada.Calendar.Clock;
       Time_Str : constant String := Ada.Calendar.Formatting.Image (Now);
 
@@ -61,53 +60,72 @@ package body Murasama_Telemetry is
          return Img (Start .. Img'Last);
       end U_Str;
 
+      procedure Write_To_Path (Path : String) is
+         Out_File : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (Out_File, Ada.Text_IO.Out_File, Path);
+         Ada.Text_IO.Put_Line (Out_File, "{");
+         Ada.Text_IO.Put_Line (Out_File, "  ""timestamp"": """ & Time_Str & """,");
+         Ada.Text_IO.Put_Line (Out_File, "  ""memory"": {");
+         Ada.Text_IO.Put_Line (Out_File, "    ""free_mb"": " & F_Str (Free_MB) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""wired_mb"": " & F_Str (Wired_MB) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""pressure_level"": " & I_Str (Pressure_Level) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""velocity_mb_s"": " & F_Str (Wired_Velocity));
+         Ada.Text_IO.Put_Line (Out_File, "  },");
+         Ada.Text_IO.Put_Line (Out_File, "  ""thrashing"": {");
+         Ada.Text_IO.Put_Line (Out_File, "    ""pageins_per_sec"": " & U_Str (Pageins_Per_Sec) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""decomp_per_sec"": " & U_Str (Decomp_Per_Sec) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""is_mitigating"": " & (if Mitigation_Active then "true" else "false"));
+         Ada.Text_IO.Put_Line (Out_File, "  },");
+         Ada.Text_IO.Put_Line (Out_File, "  ""active_app"": {");
+         Ada.Text_IO.Put_Line (Out_File, "    ""pid"": " & I_Str (Front_PID) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""name"": """ & Front_Name & """");
+         Ada.Text_IO.Put_Line (Out_File, "  },");
+         Ada.Text_IO.Put_Line (Out_File, "  ""weather"": {");
+         Ada.Text_IO.Put_Line (Out_File, "    ""atmospheric_pressure_hPa"": " & F_Str (Mock_Pressure) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""temperature_c"": " & F_Str (Mock_Temp) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""humidity_pct"": " & F_Str (Mock_Humid));
+         Ada.Text_IO.Put_Line (Out_File, "  }");
+         Ada.Text_IO.Put_Line (Out_File, "}");
+         Ada.Text_IO.Close (Out_File);
+      exception
+         when others =>
+            if Ada.Text_IO.Is_Open (Out_File) then
+               Ada.Text_IO.Close (Out_File);
+            end if;
+      end Write_To_Path;
+
    begin
       -- Ensure parent directory exists
       begin
-         Ada.Directories.Create_Directory ("/usr/local/murasamaLMKd");
+         Ada.Directories.Create_Directory ("/usr/local/murasamaLMKd/murasamalmk_daemon");
       exception
          when others =>
             null;
       end;
 
+      -- 1. Write locally for the ML predictor
+      Write_To_Path (EARU_DATA_FILE);
+
+      -- 2. Write to /Volume/EARU_dataIO if directory exists
       begin
-         Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, EARU_DATA_FILE);
+         if Ada.Directories.Exists ("/Volume/EARU_dataIO") then
+            Write_To_Path ("/Volume/EARU_dataIO/murasamalmkd_telemetry.dat");
+         end if;
       exception
          when others =>
-            return;
+            null;
       end;
 
-      -- Write beautiful, structured JSON telemetry
-      Ada.Text_IO.Put_Line (File, "{");
-      Ada.Text_IO.Put_Line (File, "  ""timestamp"": """ & Time_Str & """,");
-      Ada.Text_IO.Put_Line (File, "  ""memory"": {");
-      Ada.Text_IO.Put_Line (File, "    ""free_mb"": " & F_Str (Free_MB) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""wired_mb"": " & F_Str (Wired_MB) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""pressure_level"": " & I_Str (Pressure_Level) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""velocity_mb_s"": " & F_Str (Wired_Velocity));
-      Ada.Text_IO.Put_Line (File, "  },");
-      Ada.Text_IO.Put_Line (File, "  ""thrashing"": {");
-      Ada.Text_IO.Put_Line (File, "    ""pageins_per_sec"": " & U_Str (Pageins_Per_Sec) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""decomp_per_sec"": " & U_Str (Decomp_Per_Sec) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""is_mitigating"": " & (if Mitigation_Active then "true" else "false"));
-      Ada.Text_IO.Put_Line (File, "  },");
-      Ada.Text_IO.Put_Line (File, "  ""active_app"": {");
-      Ada.Text_IO.Put_Line (File, "    ""pid"": " & I_Str (Front_PID) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""name"": """ & Front_Name & """");
-      Ada.Text_IO.Put_Line (File, "  },");
-      Ada.Text_IO.Put_Line (File, "  ""weather"": {");
-      Ada.Text_IO.Put_Line (File, "    ""atmospheric_pressure_hPa"": " & F_Str (Mock_Pressure) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""temperature_c"": " & F_Str (Mock_Temp) & ",");
-      Ada.Text_IO.Put_Line (File, "    ""humidity_pct"": " & F_Str (Mock_Humid));
-      Ada.Text_IO.Put_Line (File, "  }");
-      Ada.Text_IO.Put_Line (File, "}");
-
-      Ada.Text_IO.Close (File);
-   exception
-      when others =>
-         if Ada.Text_IO.Is_Open (File) then
-            Ada.Text_IO.Close (File);
+      -- 3. Write to /Volumes/EARU_dataIO if directory exists (for standard macOS mounts)
+      begin
+         if Ada.Directories.Exists ("/Volumes/EARU_dataIO") then
+            Write_To_Path ("/Volumes/EARU_dataIO/murasamalmkd_telemetry.dat");
          end if;
+      exception
+         when others =>
+            null;
+      end;
    end Export_Telemetry;
 
 end Murasama_Telemetry;

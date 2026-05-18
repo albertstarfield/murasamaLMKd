@@ -11,8 +11,8 @@ package Murasama_Types is
    GRADIENT_MEASURE_MS         : constant := 100;
    TOP_N_PROCESSES             : constant := 3;
 
-   WEIGHTS_FILE                : constant String := "/usr/local/murasamaLMKd/weights.csv";
-   EARU_DATA_FILE              : constant String := "/usr/local/murasamaLMKd/EARU_data.dat";
+   WEIGHTS_FILE                : constant String := "/usr/local/murasamaLMKd/murasamalmk_daemon/weights.csv";
+   EARU_DATA_FILE              : constant String := "/usr/local/murasamaLMKd/murasamalmk_daemon/EARU_data.dat";
 
    WEIGHT_DECREMENT_HOURS      : constant := 12;
    WEIGHT_PRIORITY_THRESHOLD   : constant := 3;

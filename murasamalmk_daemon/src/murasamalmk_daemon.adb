@@ -569,7 +569,7 @@ procedure Murasamalmk_Daemon is
       File : Ada.Text_IO.File_Type;
       Line : String (1 .. 256);
       Last : Natural;
-      Path : constant String := "/usr/local/murasamaLMKd/ml_prediction.txt";
+      Path : constant String := "/usr/local/murasamaLMKd/murasamalmk_daemon/ml_prediction.txt";
    begin
       Predicted_Pressure := 1;
       Risk_Level := "low       ";

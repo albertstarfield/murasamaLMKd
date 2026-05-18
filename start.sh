@@ -37,9 +37,9 @@ alr exec -- gnatprove -P murasamalmk_daemon.gpr --level=0
 
 # 5. Initialize telemetry and prediction flat files with safe defaults
 echo "[5/5] Launching Daemon Processes..."
-mkdir -p /usr/local/murasamaLMKd
-touch /usr/local/murasamaLMKd/EARU_data.dat
-echo -e "predicted_pressure:1\nrisk_level:low\ntarget_pid:0" > /usr/local/murasamaLMKd/ml_prediction.txt
+mkdir -p /usr/local/murasamaLMKd/murasamalmk_daemon
+touch /usr/local/murasamaLMKd/murasamalmk_daemon/EARU_data.dat
+echo -e "predicted_pressure:1\nrisk_level:low\ntarget_pid:0" > /usr/local/murasamaLMKd/murasamalmk_daemon/ml_prediction.txt
 
 # Start Python Machine Learning Predictor in background
 echo "[+] Starting ML predictor in the background..."
