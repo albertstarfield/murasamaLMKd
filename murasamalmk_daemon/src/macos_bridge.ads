@@ -1,6 +1,11 @@
 with Interfaces.C;
 
 package MacOS_Bridge is
+   -- SPARK_Mode => Off: This package declares C imported subprograms via
+   -- pragma Import(C, ...). Imported foreign code cannot be verified by SPARK
+   -- because its implementation is outside the SPARK domain. All 16 subprograms
+   -- here are thin bindings to Objective-C Mach/libproc APIs in macos_utils.m.
+   pragma SPARK_Mode (Off);
    pragma Preelaborate;
 
    use Interfaces.C;

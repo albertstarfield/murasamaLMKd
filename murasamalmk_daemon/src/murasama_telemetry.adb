@@ -96,36 +96,18 @@ package body Murasama_Telemetry is
       end Write_To_Path;
 
    begin
-      -- Ensure parent directory exists
-      begin
-         Ada.Directories.Create_Directory ("/usr/local/murasamaLMKd/murasamalmk_daemon");
-      exception
-         when others =>
-            null;
-      end;
-
-      -- 1. Write locally for the ML predictor
+      -- Write telemetry for the ML predictor (EARU_DATA_FILE = /Volumes/EARU_dataIO/EARU_data.dat)
       Write_To_Path (EARU_DATA_FILE);
-
-      -- 2. Write to /Volume/EARU_dataIO if directory exists
-      begin
-         if Ada.Directories.Exists ("/Volume/EARU_dataIO") then
-            Write_To_Path ("/Volume/EARU_dataIO/murasamalmkd_telemetry.dat");
-         end if;
-      exception
-         when others =>
-            null;
-      end;
-
-      -- 3. Write to /Volumes/EARU_dataIO if directory exists (for standard macOS mounts)
-      begin
-         if Ada.Directories.Exists ("/Volumes/EARU_dataIO") then
-            Write_To_Path ("/Volumes/EARU_dataIO/murasamalmkd_telemetry.dat");
-         end if;
-      exception
-         when others =>
-            null;
-      end;
    end Export_Telemetry;
 
+begin
+   -- Ensure parent directory exists once at package initialization
+   begin
+      if not Ada.Directories.Exists ("/usr/local/murasamaLMKd/murasamalmk_daemon") then
+         Ada.Directories.Create_Directory ("/usr/local/murasamaLMKd/murasamalmk_daemon");
+      end if;
+   exception
+      when others =>
+         null;
+   end;
 end Murasama_Telemetry;

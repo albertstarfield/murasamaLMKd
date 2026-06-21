@@ -1,51 +1,42 @@
 #!/bin/bash
+# Murasama LMKd - Daemon Launch Script
+# This script is executed by launchd (KeepAlive).
+# It starts the ML predictor and the Ada/SPARK daemon.
 set -e
 
-echo "=== Murasama LMKd Bootstrap Launch Sequence ==="
-cd /usr/local/murasamaLMKd/murasamalmk_daemon
+DAEMON_DIR="/usr/local/murasamaLMKd/murasamalmk_daemon"
+BIN_PATH="${DAEMON_DIR}/bin/murasamalmk_daemon"
+ALR="/usr/local/bin/alr"
+LOG_DIR="/tmp"
 
-# 1. Compile Objective-C bridge manually to ensure correct frameworks are linked
-echo "[1/5] Compiling Objective-C bridge..."
-mkdir -p obj/development
-/usr/bin/clang -g -O2 -x objective-c -c src/macos_utils.m -o obj/development/macos_utils.o \
-  -framework AppKit -framework Foundation -framework CoreGraphics -lproc \
-  -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+# Export PATH so launchd subprocesses can find tools
+export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
 
-# 2. Compile the Ada/SPARK daemon binary using Alire
-echo "[2/5] Compiling Ada/SPARK daemon..."
-alr build
+echo "=== Murasama LMKd Launch ==="
 
-# 3. Setup Python virtual environment, auto-install dependencies, and verify type safety
-echo "[3/5] Bootstrapping Python virtualenv and verifying type safety..."
-if [ ! -d "python/venv" ]; then
-  echo "[+] Virtual environment 'python/venv' not found. Creating..."
-  python3 -m venv python/venv
+# 1. Build only if binary is missing or source is newer than binary
+if [ ! -f "${BIN_PATH}" ] || [ "${DAEMON_DIR}/src/murasamalmk_daemon.adb" -nt "${BIN_PATH}" ]; then
+  echo "[BUILD] Binary missing or stale. Compiling..."
+  cd "${DAEMON_DIR}"
+
+  # Compile Objective-C bridge
+  mkdir -p obj/development
+  /usr/bin/clang -g -O2 -x objective-c -c src/macos_utils.m -o obj/development/macos_utils.o \
+    -framework AppKit -framework Foundation -framework CoreGraphics -lproc \
+    -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk 2>/dev/null
+
+  # Compile Ada/SPARK daemon
+  "${ALR}" build 2>&1
+  echo "[BUILD] Done."
+else
+  echo "[SKIP] Binary up to date: ${BIN_PATH}"
 fi
 
-echo "[+] Activating venv and auto-installing required packages..."
-source python/venv/bin/activate
-pip install --upgrade pip
-pip install numpy pandas scikit-learn
+# 2. Initialize data files
+mkdir -p "${DAEMON_DIR}"
+echo -e "predicted_pressure:1\nrisk_level:low\ntarget_pid:0" > "${DAEMON_DIR}/ml_prediction.txt"
 
-echo "[+] Running Python type checking (pyrefly)..."
-/opt/homebrew/anaconda3/bin/pyrefly check python/ml_predictor.py
-deactivate
-
-# 4. Perform SPARK verification
-echo "[4/5] Running formal SPARK verification (gnatprove)..."
-alr exec -- gnatprove -P murasamalmk_daemon.gpr --level=0
-
-# 5. Initialize telemetry and prediction flat files with safe defaults
-echo "[5/5] Launching Daemon Processes..."
-mkdir -p /usr/local/murasamaLMKd/murasamalmk_daemon
-touch /usr/local/murasamaLMKd/murasamalmk_daemon/EARU_data.dat
-echo -e "predicted_pressure:1\nrisk_level:low\ntarget_pid:0" > /usr/local/murasamaLMKd/murasamalmk_daemon/ml_prediction.txt
-
-# Start Python Machine Learning Predictor in background
-echo "[+] Starting ML predictor in the background..."
-/usr/local/murasamaLMKd/murasamalmk_daemon/python/venv/bin/python3 \
-  /usr/local/murasamaLMKd/murasamalmk_daemon/python/ml_predictor.py > /var/log/murasamalmk_ml.log 2>&1 &
-
-# Execute the Ada/SPARK daemon (replacing current process shell)
-echo "[+] Unsheathing Murasama Daemon..."
-exec /usr/local/murasamaLMKd/murasamalmk_daemon/bin/murasamalmk_daemon
+# 3. Launch the Ada/SPARK daemon (replaces this shell)
+#    The daemon now manages the ML predictor sidecar internally.
+echo "[DAEMON] Unsheathing Murasama Daemon..."
+exec "${BIN_PATH}"

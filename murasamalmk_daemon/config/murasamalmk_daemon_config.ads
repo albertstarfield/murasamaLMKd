@@ -12,7 +12,7 @@ package Murasamalmk_Daemon_Config is
 
    Alire_Host_Arch : constant String := "aarch64";
 
-   Alire_Host_Distro : constant String := "homebrew";
+   Alire_Host_Distro : constant String := "distribution_unknown";
 
    type Build_Profile_Kind is (release, validation, development);
    Build_Profile : constant Build_Profile_Kind := development;

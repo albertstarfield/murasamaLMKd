@@ -144,9 +144,10 @@ int is_system_process_c(const char *path) {
         "coreaudiod", "loginwindow", "ScreenSaverEngine", "coreauthd", "SecurityAgent",
         "Dock", "SystemUIServer", "Finder", "runningboardd", "UserEventAgent", "lsd", "mDNSResponder",
         "FSUSBDriverIsolationBridge", "launchservicesd", "watchdogd", "rclone", "ffmpeg",
-        "entrypoint.sh", "Terminal.app", "Terminal", "WhatsApp", "iTerm2", "iTerm", "iterm", "airportd"
+        "entrypoint.sh", "Terminal.app", "Terminal", "WhatsApp", "iTerm2", "iTerm", "iterm", "airportd",
+        "oMLX", "omlx-server"
     };
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < 34; i++) {
         if (strstr(path, excluded[i])) return 1;
     }
 
@@ -266,16 +267,20 @@ int get_top_processes_by_memory_c(int *out_pids, uint64_t *out_resident_bytes, i
 
                 const char *blacklist[] = {
                     "WindowServer", "loginwindow", "SystemUIServer", "Dock", "Finder",
-                    "NotificationCenter", "ControlCenter", "Spotlight", "launchd"
+                    "NotificationCenter", "ControlCenter", "Spotlight", "launchd",
+                    "oMLX", "omlx-server"
                 };
                 int blacklisted = 0;
-                for (int b = 0; b < 9; b++) {
+                for (int b = 0; b < 11; b++) {
                     if (strcmp(bname, blacklist[b]) == 0) {
                         blacklisted = 1;
                         break;
                     }
                 }
-                if (blacklisted) continue;
+                if (blacklisted) {
+                    setpriority(PRIO_PROCESS, pid, 20);
+                    continue;
+                }
 
                 entries[entry_count].pid = pid;
                 entries[entry_count].resident_size = pti.pti_resident_size;

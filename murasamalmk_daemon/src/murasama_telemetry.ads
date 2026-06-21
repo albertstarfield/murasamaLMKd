@@ -1,12 +1,15 @@
 with Interfaces.C;
-with Murasama_Types; use Murasama_Types;
+-- FIX: Removed 'with Murasama_Types; use Murasama_Types' from spec.
+-- REASON: No entities from Murasama_Types are referenced in the spec. The procedure
+--         uses standard Ada types and Interfaces.C.unsigned_long_long. The with/use
+--         clause belongs in the body where EARU_DATA_FILE is used. (Warning: -gnatwu)
 
 package Murasama_Telemetry is
    pragma SPARK_Mode (Off);
 
    use Interfaces.C;
 
-   -- Export telemetry to /usr/local/murasamaLMKd/EARU_data.dat
+   -- Export telemetry to /Volumes/EARU_dataIO/EARU_data.dat
    procedure Export_Telemetry (
       Free_MB                 : Long_Float;
       Wired_MB                : Long_Float;

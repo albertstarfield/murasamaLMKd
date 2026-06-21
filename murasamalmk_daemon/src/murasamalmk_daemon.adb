@@ -7,6 +7,13 @@ with Murasama_Types; use Murasama_Types;
 with Murasama_Weights; use Murasama_Weights;
 with Murasama_Telemetry; use Murasama_Telemetry;
 
+-- SPARK_Mode => Off: The main daemon procedure cannot be verified by SPARK because:
+--   1. Ada tasks (Async_Command_Runner, Decrement_Task, Thrashing_Task) with rendezvous
+--   2. File I/O via Ada.Text_IO (reading ml_prediction.txt, weight files)
+--   3. C library imports (kill, system) via pragma Import
+--   4. Protected types with mutable state (Mitigation_State)
+--   5. Unbounded delays and real-time scheduling
+-- Only the pure computation subpackages (murasama_types) are SPARK-verified.
 procedure Murasamalmk_Daemon is
 
    -- Import kill function from C library
@@ -203,10 +210,11 @@ procedure Murasamalmk_Daemon is
    end Queue_Thrashing_Summary_Notification;
 
    -- Mitigation In / Out helpers
+   -- FIX: Removed unused Front_Name_C and Front_Name variables.
+   -- REASON: These were populated from Get_Process_Name_C but never read afterward.
+   --         The frontmost process name is not needed for the mitigation logic itself,
+   --         only its PID is used for priority boosting. (Warning: -gnatwm)
    procedure Thrashing_Mitigation_In (Current_Front : PID_T) is
-      Front_Name_C : char_array (size_t(1) .. size_t(MAX_NAME_LEN)) := (others => ' ');
-      Front_Name : String (1 .. MAX_NAME_LEN) := (others => ' ');
-      Front_Len : Integer := 0;
    begin
       if Mitigation_State.Is_Mitigating then
          return;
@@ -214,18 +222,6 @@ procedure Murasamalmk_Daemon is
 
       Ada.Text_IO.New_Line;
       Ada.Text_IO.Put_Line ("[CRITICAL] Thrashing tripped! Engaging Mitigation...");
-
-      Get_Process_Name_C (Current_Front, Front_Name_C, int(MAX_NAME_LEN));
-      for I in Front_Name_C'Range loop
-         if Front_Name_C (I) = char'Val (0) then
-            Front_Len := Integer (I) - Integer (Front_Name_C'First);
-            exit;
-         end if;
-         Front_Name (Integer (I) - Integer (Front_Name_C'First) + 1) := To_Ada (Front_Name_C (I));
-      end loop;
-      if Front_Len = 0 then
-         Front_Len := MAX_NAME_LEN;
-      end if;
 
       -- Fetch and print top 50 processes
       declare
@@ -275,7 +271,10 @@ procedure Murasamalmk_Daemon is
             else
                Set_Process_Priority_C (Current_Front, int(-20));
                declare
-                  Single_Array : PID_Array (int(1) .. int(1)) := (others => Current_Front);
+                  -- FIX: Added 'constant' qualifier to Single_Array.
+                  -- REASON: The array is never modified after initialization, so it should
+                  --         be declared constant. (Warning: -gnatwk)
+                  Single_Array : constant PID_Array (int(1) .. int(1)) := (others => Current_Front);
                begin
                   Mitigation_State.Set_Boosted_PIDs (Single_Array, 1);
                end;
@@ -401,7 +400,10 @@ procedure Murasamalmk_Daemon is
       Kill_Count : Integer := 0;
 
       Free_MB        : Long_Float;
-      Wired_MB       : Long_Float;
+      -- FIX: Removed unused Wired_MB variable.
+      -- REASON: This variable was declared but never assigned or read. The bloodshed
+      --         handler only needs Free_MB and Pressure_Level to decide if pressure
+      --         has been resolved after a kill. (Warning: -gnatwu)
       Pressure_Level : Integer;
    begin
       Ada.Text_IO.Put_Line ("");
@@ -499,23 +501,31 @@ procedure Murasamalmk_Daemon is
                               Phase_Desc (1 .. 25) := "first kill (lowest rate) ";
                               Phase_Len := 25;
                            else
-                              Phase_Desc (1 .. 26) := "second kill (lowest rate)";
-                              Phase_Len := 26;
+                              -- FIX: Changed slice from (1..26) to (1..25).
+                              -- REASON: The string literal "second kill (lowest rate)" is 25
+                              --         characters, not 26. Mismatched slice length causes
+                              --         Constraint_Error at runtime. (Warning: default)
+                              Phase_Desc (1 .. 25) := "second kill (lowest rate)";
+                              Phase_Len := 25;
                            end if;
                         end;
                      else
-                        -- Third kill: target highest rate (active memory hoarder)
-                        declare
-                           Max_Rate : Long_Float := -999999.0;
-                        begin
-                           for I in 1 .. Integer (Top_Count) loop
-                              if Rates (I) > Max_Rate then
-                                 Max_Rate := Rates (I);
-                                 Target_Idx := I;
-                              end if;
-                           end loop;
-                           Phase_Desc (1 .. 26) := "third kill (highest rate)";
-                           Phase_Len := 26;
+                           -- Third kill: target highest rate (active memory hoarder)
+                           declare
+                              Max_Rate : Long_Float := -999999.0;
+                           begin
+                              for I in 1 .. Integer (Top_Count) loop
+                                 if Rates (I) > Max_Rate then
+                                    Max_Rate := Rates (I);
+                                    Target_Idx := I;
+                                 end if;
+                              end loop;
+                              -- FIX: Changed slice from (1..26) to (1..25).
+                              -- REASON: The string literal "third kill (highest rate)" is 25
+                              --         characters, not 26. Mismatched slice length causes
+                              --         Constraint_Error at runtime. (Warning: default)
+                              Phase_Desc (1 .. 25) := "third kill (highest rate)";
+                              Phase_Len := 25;
                         end;
                      end if;
                   end if;
@@ -524,15 +534,25 @@ procedure Murasamalmk_Daemon is
                      declare
                         T_PID  : constant PID_T := Top_Pids (int(Target_Idx));
                         T_Name : constant String := Names (Target_Idx) (1 .. Name_Lens (Target_Idx));
-                        Res    : int;
+                        -- FIX: Removed unused 'Res' variable.
+                        -- REASON: The return value of Kill_C was assigned to Res but never
+                        --         read. The kill result is not checked, so the variable is
+                        --         unnecessary. (Warning: -gnatwm)
                      begin
                         Ada.Text_IO.Put_Line ("Phase: " & Phase_Desc (1 .. Phase_Len));
                         Ada.Text_IO.Put_Line ("Target: PID " & PID_T'Image (T_PID) & " (" & T_Name & ")");
 
                         Queue_Zenity_Warning (T_Name, Trigger_Reason & " (" & Phase_Desc (1 .. Phase_Len) & ")");
 
-                        -- Kill target
-                        Res := Kill_C (T_PID, int(9)); -- SIGKILL
+                         -- Kill target
+                         -- FIX: Removed Res assignment. The return value of Kill_C is not
+                         --         checked, so we discard it directly. (Warning: -gnatwm)
+                         declare
+                            Kill_Result : int;
+                            pragma Unreferenced (Kill_Result);
+                         begin
+                            Kill_Result := Kill_C (T_PID, int(9)); -- SIGKILL
+                         end;
                         Kill_Count := Kill_Count + 1;
 
                         -- Increment weight
@@ -598,8 +618,13 @@ procedure Murasamalmk_Daemon is
             declare
                Val : constant String := Line (12 .. Last);
             begin
-               Risk_Level := (others => ' ');
-               Risk_Level (1 .. Natural'Min (Val'Length, 10)) := Val (Val'First .. Val'First + Natural'Min (Val'Length, 10) - 1);
+                Risk_Level := (others => ' ');
+                -- FIX: Use Risk_Level'First instead of hardcoded 1.
+                -- REASON: The compiler warns that the index may assume lower bound of 1.
+                --         Using 'First makes the code correct regardless of the array's
+                --         actual lower bound. (Warning: -gnatww)
+                Risk_Level (Risk_Level'First .. Risk_Level'First + Natural'Min (Val'Length, 10) - 1)
+                  := Val (Val'First .. Val'First + Natural'Min (Val'Length, 10) - 1);
             end;
          elsif Last >= 12 and then Line (1 .. 11) = "target_pid:" then
             begin
@@ -618,12 +643,166 @@ procedure Murasamalmk_Daemon is
          end if;
    end Read_ML_Prediction;
 
+   -- ==================== SIDECAR MANAGER ====================
+   -- Spawns, monitors, and restarts the Python ML predictor sidecar.
+   -- Replaces the nohup-based launch from start.sh with proper process
+   -- lifecycle management from within the Ada daemon.
+
+   ML_PREDICTOR_PATH : constant String :=
+     "/usr/local/murasamaLMKd/murasamalmk_daemon/python/venv/bin/python3";
+   ML_PREDICTOR_SCRIPT : constant String :=
+     "/usr/local/murasamaLMKd/murasamalmk_daemon/python/ml_predictor.py";
+   ML_PREDICTOR_LOG : constant String :=
+     "/tmp/murasamalmk_ml.log";
+
+   -- Check if a process with given PID is alive
+   function Is_Process_Alive (PID : PID_T) return Boolean is
+      Result : int;
+      pragma Unreferenced (Result);
+   begin
+      -- kill(pid, 0) checks existence without sending signal
+      Result := Kill_C (PID, 0);
+      return Result = 0;
+   end Is_Process_Alive;
+
+   -- Spawn the ML predictor sidecar, return its PID (0 on failure)
+   function Spawn_ML_Predictor return PID_T is
+   begin
+      -- Write a temp script to get the PID
+      declare
+         Script_Path : constant String := "/tmp/murasama_spawn.sh";
+         File : Ada.Text_IO.File_Type;
+         Line : String (1 .. 32);
+         Last : Natural;
+         Result_PID : PID_T := 0;
+      begin
+         Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Script_Path);
+         Ada.Text_IO.Put_Line (File, "#!/bin/bash");
+         Ada.Text_IO.Put_Line (File, ML_PREDICTOR_PATH & " " & ML_PREDICTOR_SCRIPT &
+           " > /dev/null 2>&1 &");
+         Ada.Text_IO.Put_Line (File, "echo $!");
+         Ada.Text_IO.Close (File);
+
+         Run_System_Command_C (To_C ("chmod +x " & Script_Path));
+
+         -- Read the PID from stdout
+         Run_System_Command_C (To_C (Script_Path & " > /tmp/murasama_pid.txt"));
+         delay 0.5;
+
+         if Ada.Directories.Exists ("/tmp/murasama_pid.txt") then
+            Ada.Text_IO.Open (File, Ada.Text_IO.In_File, "/tmp/murasama_pid.txt");
+            if not Ada.Text_IO.End_Of_File (File) then
+               Ada.Text_IO.Get_Line (File, Line, Last);
+               if Last > 0 then
+                  begin
+                     Result_PID := PID_T'Value (Line (1 .. Last));
+                  exception
+                     when others => Result_PID := 0;
+                  end;
+               end if;
+            end if;
+            Ada.Text_IO.Close (File);
+         end if;
+
+         return Result_PID;
+      end;
+   end Spawn_ML_Predictor;
+
+   -- Kill the ML predictor sidecar gracefully, then force if needed
+   procedure Kill_ML_Predictor (PID : PID_T) is
+      Result : int;
+      pragma Unreferenced (Result);
+   begin
+      if PID <= 0 then
+         return;
+      end if;
+      -- SIGTERM first (graceful)
+      Result := Kill_C (PID, int(15));
+      delay 1.0;
+      -- Check if still alive, force kill
+      if Is_Process_Alive (PID) then
+         Result := Kill_C (PID, int(9)); -- SIGKILL
+      end if;
+   end Kill_ML_Predictor;
+
+   -- Sidecar Manager Task: spawns and monitors the ML predictor
+   task Sidecar_Manager_Task;
+   task body Sidecar_Manager_Task is
+      ML_PID        : PID_T := 0;
+      Restart_Count : Integer := 0;
+      Max_Restarts  : constant Integer := 5;
+      Check_Interval : constant Duration := 5.0;
+      Last_Health_Check : Time := Clock;
+   begin
+      delay 3.0; -- Wait for daemon initialization
+
+      -- Initial spawn
+      Ada.Text_IO.Put_Line ("[SIDECAR] Spawning ML predictor sidecar...");
+      ML_PID := Spawn_ML_Predictor;
+      if ML_PID > 0 then
+         Ada.Text_IO.Put_Line ("[SIDECAR] ML predictor started. PID:" & PID_T'Image (ML_PID));
+      else
+         Ada.Text_IO.Put_Line ("[SIDECAR] WARNING: Failed to spawn ML predictor.");
+      end if;
+
+      loop
+         delay Check_Interval;
+
+         -- Check if ML predictor is still alive
+         if ML_PID > 0 then
+            if not Is_Process_Alive (ML_PID) then
+               Ada.Text_IO.Put_Line ("[SIDECAR] ML predictor died (PID:" &
+                 PID_T'Image (ML_PID) & "). Restarting...");
+               Restart_Count := Restart_Count + 1;
+
+               if Restart_Count > Max_Restarts then
+                  Ada.Text_IO.Put_Line ("[SIDECAR] Max restarts (" &
+                    Integer'Image (Max_Restarts) & ") reached. Giving up.");
+                  exit;
+               end if;
+
+               delay 1.0;
+               ML_PID := Spawn_ML_Predictor;
+               if ML_PID > 0 then
+                  Ada.Text_IO.Put_Line ("[SIDECAR] ML predictor restarted. PID:" &
+                    PID_T'Image (ML_PID) & " (attempt" & Integer'Image (Restart_Count) & ")");
+               else
+                  Ada.Text_IO.Put_Line ("[SIDECAR] Failed to restart ML predictor.");
+               end if;
+            end if;
+         else
+            -- Try to spawn if we don't have a PID
+            ML_PID := Spawn_ML_Predictor;
+            if ML_PID > 0 then
+               Ada.Text_IO.Put_Line ("[SIDECAR] ML predictor spawned. PID:" & PID_T'Image (ML_PID));
+            end if;
+         end if;
+
+         -- Periodic health log
+         if Clock >= Last_Health_Check + Seconds (30) then
+            if ML_PID > 0 and then Is_Process_Alive (ML_PID) then
+               Ada.Text_IO.Put_Line ("[SIDECAR] ML predictor healthy. PID:" &
+                 PID_T'Image (ML_PID) & " | Restarts:" & Integer'Image (Restart_Count));
+            else
+               Ada.Text_IO.Put_Line ("[SIDECAR] ML predictor not running. Restarts:" &
+                 Integer'Image (Restart_Count));
+            end if;
+            Last_Health_Check := Clock;
+         end if;
+      end loop;
+
+      -- Cleanup on task exit
+      Kill_ML_Predictor (ML_PID);
+      Ada.Text_IO.Put_Line ("[SIDECAR] Sidecar manager shutting down.");
+   end Sidecar_Manager_Task;
+
    -- Variables for main loop
    Page_Size : constant UINT64_T := Get_Page_Size_C;
    Last_Time : Time := Clock;
    Last_Report_Time : Time := Clock;
+   Last_Telemetry_Time : Time := Clock;
+   Last_Front_Check_Time : Time := Clock;
 
-   Last_Free_MB : Long_Float;
    Last_Wired_MB : Long_Float;
 
    Current_Free_MB : Long_Float;
@@ -634,23 +813,26 @@ procedure Murasamalmk_Daemon is
    ML_Risk_Level : String (1 .. 10) := (others => ' ');
    ML_Target_PID : PID_T := 0;
 
+   Front_PID : PID_T := 0;
+   Front_Name : String (1 .. MAX_NAME_LEN) := (others => ' ');
+   Front_Len : Integer := 0;
+
 begin
    -- Initialize async runner
    Runner := new Async_Command_Runner;
 
-   Ada.Text_IO.Put_Line ("[Murasama LMKd] Unsheathed. GUI Notifications Enabled. Polling interval = 25ms.");
+   Ada.Text_IO.Put_Line ("[Murasama LMKd] Unsheathed. GUI Notifications Enabled. Polling interval = 100ms.");
    Ada.Text_IO.Put_Line ("Thrashing detection active. Mitigation threshold: pageins/s > " &
      Integer'Image (THRASHING_THRESHOLD_PAGEINS) & " or decomp/s > " & Integer'Image (THRASHING_THRESHOLD_DECOMP));
 
    Init_Weights;
    Load_Weights;
 
-   Last_Free_MB := Long_Float (Get_Free_MB_C (Page_Size));
    Last_Wired_MB := Long_Float (Get_Wired_MB_C (Page_Size));
 
    -- Main Loop
    loop
-      delay 0.025; -- 25ms poll
+      delay 0.1; -- 100ms poll (Optimized for <0.9% CPU)
 
       Current_Free_MB := Long_Float (Get_Free_MB_C (Page_Size));
       Current_Wired_MB := Long_Float (Get_Wired_MB_C (Page_Size));
@@ -661,10 +843,6 @@ begin
          Elapsed : constant Duration := To_Duration (Now - Last_Time);
          Elapsed_Secs : constant Long_Float := Long_Float (Elapsed);
          Wired_Velocity : Long_Float := 0.0;
-         Front_PID : PID_T;
-         Front_Name_C : char_array (size_t(1) .. size_t(MAX_NAME_LEN)) := (others => ' ');
-         Front_Name : String (1 .. MAX_NAME_LEN) := (others => ' ');
-         Front_Len : Integer := 0;
       begin
          if Elapsed_Secs > 0.0 then
             Wired_Velocity := (Current_Wired_MB - Last_Wired_MB) / Elapsed_Secs;
@@ -673,22 +851,30 @@ begin
             end if;
          end if;
 
-         -- Query frontmost app info for telemetry
-         Front_PID := Get_Frontmost_PID_C;
-         Get_Process_Name_C (Front_PID, Front_Name_C, int(MAX_NAME_LEN));
-         for I in Front_Name_C'Range loop
-            if Front_Name_C (I) = char'Val (0) then
-               Front_Len := Integer (I) - Integer (Front_Name_C'First);
-               exit;
-            end if;
-            Front_Name (Integer (I) - Integer (Front_Name_C'First) + 1) := To_Ada (Front_Name_C (I));
-         end loop;
-         if Front_Len = 0 then
-            Front_Len := MAX_NAME_LEN;
+         -- Query frontmost app info (Throttled to 1s to avoid SkyLight IPC overhead)
+         if Now >= Last_Front_Check_Time + Seconds (1) then
+            declare
+               Front_Name_C : char_array (size_t(1) .. size_t(MAX_NAME_LEN)) := (others => ' ');
+            begin
+               Front_PID := Get_Frontmost_PID_C;
+               Get_Process_Name_C (Front_PID, Front_Name_C, int(MAX_NAME_LEN));
+               Front_Len := 0;
+               for I in Front_Name_C'Range loop
+                  if Front_Name_C (I) = char'Val (0) then
+                     Front_Len := Integer (I) - Integer (Front_Name_C'First);
+                     exit;
+                  end if;
+                  Front_Name (Integer (I) - Integer (Front_Name_C'First) + 1) := To_Ada (Front_Name_C (I));
+               end loop;
+               if Front_Len = 0 then
+                  Front_Len := MAX_NAME_LEN;
+               end if;
+               Last_Front_Check_Time := Now;
+            end;
          end if;
 
          -- Periodic 5-Second Health Report
-         if To_Duration (Now - Last_Report_Time) >= 5.0 then
+         if Now >= Last_Report_Time + Seconds (5) then
             Ada.Text_IO.Put_Line ("[HEALTH CHECK] Free: " &
               Long_Float'Image (Current_Free_MB) & " MB | Wired: " &
               Long_Float'Image (Current_Wired_MB) & " MB | Lvl: " &
@@ -706,28 +892,31 @@ begin
             Last_Report_Time := Now;
          end if;
 
-         -- Export JSON Telemetry
-         declare
-            F_Start, P_Start, D_Start : UINT64_T;
-            F_End, P_End, D_End : UINT64_T;
-         begin
-            Get_Memory_Snapshot_C (F_Start, P_Start, D_Start);
-            delay 0.001;
-            Get_Memory_Snapshot_C (F_End, P_End, D_End);
-            Export_Telemetry (
-              Free_MB => Current_Free_MB,
-              Wired_MB => Current_Wired_MB,
-              Pressure_Level => Current_Pressure,
-              Wired_Velocity => Wired_Velocity,
-              Pageins_Per_Sec => (P_End - P_Start) * 1000,
-              Decomp_Per_Sec => (D_End - D_Start) * 1000,
-              Front_PID => Integer (Front_PID),
-              Front_Name => Front_Name (1 .. Front_Len),
-              Mitigation_Active => Mitigation_State.Is_Mitigating
-            );
-         exception
-            when others => null;
-         end;
+         -- Export JSON Telemetry (Throttled to 2s to avoid high I/O churn)
+         if Now >= Last_Telemetry_Time + Seconds (2) then
+            declare
+               F_Start, P_Start, D_Start : UINT64_T;
+               F_End, P_End, D_End : UINT64_T;
+            begin
+               Get_Memory_Snapshot_C (F_Start, P_Start, D_Start);
+               delay 0.001;
+               Get_Memory_Snapshot_C (F_End, P_End, D_End);
+               Export_Telemetry (
+                 Free_MB => Current_Free_MB,
+                 Wired_MB => Current_Wired_MB,
+                 Pressure_Level => Current_Pressure,
+                 Wired_Velocity => Wired_Velocity,
+                 Pageins_Per_Sec => (P_End - P_Start) * 1000,
+                 Decomp_Per_Sec => (D_End - D_Start) * 1000,
+                 Front_PID => Integer (Front_PID),
+                 Front_Name => Front_Name (1 .. Front_Len),
+                 Mitigation_Active => Mitigation_State.Is_Mitigating
+               );
+               Last_Telemetry_Time := Now;
+            exception
+               when others => null;
+            end;
+         end if;
 
          -- Decision Tree for Bloodshed
          declare
@@ -737,22 +926,46 @@ begin
          begin
             if Current_Pressure >= 4 then
                Condition_Met := True;
-               Trigger_Reason (1 .. 27) := "Level 4 OS Memory Pressure";
-               Trigger_Len := 27;
+               -- FIX: Changed slice from (1..27) to (1..26).
+               -- REASON: The string literal "Level 4 OS Memory Pressure" is 26
+               --         characters, not 27. Mismatched slice length causes
+               --         Constraint_Error at runtime. (Warning: default)
+               Trigger_Reason (1 .. 26) := "Level 4 OS Memory Pressure";
+               Trigger_Len := 26;
             elsif Current_Free_MB < CRITICAL_FREE_MB then
                Condition_Met := True;
-               Trigger_Reason (1 .. 28) := "Free Memory Below Threshold";
-               Trigger_Len := 28;
+               -- FIX: Changed slice from (1..28) to (1..27).
+               -- REASON: The string literal "Free Memory Below Threshold" is 27
+               --         characters, not 28. Mismatched slice length causes
+               --         Constraint_Error at runtime. (Warning: default)
+               Trigger_Reason (1 .. 27) := "Free Memory Below Threshold";
+               Trigger_Len := 27;
             elsif Wired_Velocity > PANIC_VELOCITY_MB_S and then Current_Free_MB < (CRITICAL_FREE_MB * 4.0) then
                Condition_Met := True;
-               Trigger_Reason (1 .. 32) := "Violent Memory Allocation Spike";
-               Trigger_Len := 32;
-            elsif ML_Predicted_Pressure >= 4 and then Current_Pressure >= 3 then
-               -- ML proactive tripwire: if ML predicts level 4, and current pressure is already level 3,
-               -- proactively triggers bloodshed to prevent the OS from freezing up!
+               -- FIX: Changed slice from (1..32) to (1..31).
+               -- REASON: The string literal "Violent Memory Allocation Spike" is 31
+               --         characters, not 32. Mismatched slice length causes
+               --         Constraint_Error at runtime. (Warning: default)
+               Trigger_Reason (1 .. 31) := "Violent Memory Allocation Spike";
+               Trigger_Len := 31;
+            -- FIX: Changed Current_Pressure >= 3 to Current_Pressure = 3.
+            -- REASON: The compiler correctly identifies that since the first `if` branch
+            --         already handles Current_Pressure >= 4, by the time we reach this
+            --         elsif, Current_Pressure must be < 4. Therefore >= 3 is equivalent
+            --         to = 3. (Warning: -gnatwc)
+            elsif (ML_Predicted_Pressure = 4 or else ML_Predicted_Pressure = 5)
+              and then Current_Pressure = 3
+            then
+               -- ML proactive tripwire: if ML predicts level 4 or 5, and current pressure
+               -- is already level 3, proactively triggers bloodshed to prevent the OS
+               -- from freezing up!
                Condition_Met := True;
-               Trigger_Reason (1 .. 45) := "ML Preemptive Memory Pressure Spike Forecast";
-               Trigger_Len := 45;
+               -- FIX: Changed slice from (1..45) to (1..44).
+               -- REASON: The string literal "ML Preemptive Memory Pressure Spike Forecast"
+               --         is 44 characters, not 45. Mismatched slice length causes
+               --         Constraint_Error at runtime. (Warning: default)
+               Trigger_Reason (1 .. 44) := "ML Preemptive Memory Pressure Spike Forecast";
+               Trigger_Len := 44;
             end if;
 
             if Condition_Met and then Current_Pressure >= MIN_PRESSURE_LEVEL_TO_KILL
@@ -766,7 +979,6 @@ begin
          end;
 
          Last_Time := Now;
-         Last_Free_MB := Current_Free_MB;
          Last_Wired_MB := Current_Wired_MB;
       end;
    end loop;

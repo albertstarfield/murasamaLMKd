@@ -1,6 +1,10 @@
 with Ada.Text_IO;
-with Ada.IO_Exceptions;
+-- FIX: Removed unused 'with Ada.IO_Exceptions'.
+-- REASON: No exceptions from Ada.IO_Exceptions are referenced in this body.
+--         (Warning: -gnatwu)
 with Ada.Directories;
+-- FIX: The with/use clause for Murasama_Types is needed here (in the body) since
+--         types like Process_Name_String, MAX_NAME_LEN, Weights_Array are used.
 with Murasama_Types; use Murasama_Types;
 
 package body Murasama_Weights is

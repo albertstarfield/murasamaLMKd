@@ -9,7 +9,7 @@
 
 #define ALIRE_HOST_ARCH "aarch64"
 
-#define ALIRE_HOST_DISTRO "homebrew"
+#define ALIRE_HOST_DISTRO "distribution_unknown"
 
 #define BUILD_PROFILE_RELEASE 1
 #define BUILD_PROFILE_VALIDATION 2

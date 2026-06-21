@@ -13,7 +13,7 @@ import numpy as np
 from sklearn.linear_model import SGDClassifier
 
 # Constant configurations
-TELEMETRY_PATH: str = "/usr/local/murasamaLMKd/murasamalmk_daemon/EARU_data.dat"
+TELEMETRY_PATH: str = "/Volumes/EARU_dataIO/EARU_data.dat"
 PREDICTION_PATH: str = "/usr/local/murasamaLMKd/murasamalmk_daemon/ml_prediction.txt"
 MODEL_RETRAIN_INTERVAL: int = 5  # retrain/update model every 5 steps
 HISTORY_MAX_LEN: int = 500       # maintain sliding buffer size of 500 samples

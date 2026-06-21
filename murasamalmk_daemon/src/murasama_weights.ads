@@ -1,5 +1,7 @@
-with Murasama_Types; use Murasama_Types;
-
+-- FIX: Removed 'with Murasama_Types; use Murasama_Types' from spec.
+-- REASON: No entities from Murasama_Types are referenced in the spec. The with/use
+--         clause belongs in the body where Murasama_Types is actually used.
+--         (Warning: -gnatwu)
 package Murasama_Weights is
    pragma SPARK_Mode (Off);
 
