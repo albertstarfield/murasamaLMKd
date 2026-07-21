@@ -39,4 +39,10 @@ int list_pids_c(int *out_pids, int max_count);
 // System Execution Helper
 void run_system_command_c(const char *cmd);
 
+// Restore normal scheduling for blacklisted processes (clears background scheduling)
+void restore_blacklisted_priorities_c(void);
+
+// Explicitly set background scheduling for blacklisted processes
+void deprioritize_blacklisted_c(void);
+
 #endif // MACOS_UTILS_H

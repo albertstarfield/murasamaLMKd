@@ -145,9 +145,10 @@ int is_system_process_c(const char *path) {
         "Dock", "SystemUIServer", "Finder", "runningboardd", "UserEventAgent", "lsd", "mDNSResponder",
         "FSUSBDriverIsolationBridge", "launchservicesd", "watchdogd", "rclone", "ffmpeg",
         "entrypoint.sh", "Terminal.app", "Terminal", "WhatsApp", "iTerm2", "iTerm", "iterm", "airportd",
-        "oMLX", "omlx-server"
+        "oMLX", "omlx-server", "com.apple.Virtualization.VirtualMachine", "qemu-system-aarch64",
+        "adelaide_server", "adelaide_watchdog"
     };
-    for (int i = 0; i < 34; i++) {
+    for (int i = 0; i < 38; i++) {
         if (strstr(path, excluded[i])) return 1;
     }
 
@@ -265,22 +266,19 @@ int get_top_processes_by_memory_c(int *out_pids, uint64_t *out_resident_bytes, i
             if (proc_pidpath(pid, pathbuf, sizeof(pathbuf)) > 0) {
                 char *bname = basename(pathbuf);
 
+                /* Blacklisted processes are skipped (not deprioritized here).
+                   Deprioritization is handled by deprioritize_blacklisted_c(). */
                 const char *blacklist[] = {
-                    "WindowServer", "loginwindow", "SystemUIServer", "Dock", "Finder",
-                    "NotificationCenter", "ControlCenter", "Spotlight", "launchd",
-                    "oMLX", "omlx-server"
+                    "oMLX", "omlx-server", "com.apple.Virtualization.VirtualMachine", "qemu-system-aarch64"
                 };
                 int blacklisted = 0;
-                for (int b = 0; b < 11; b++) {
+                for (int b = 0; b < 4; b++) {
                     if (strcmp(bname, blacklist[b]) == 0) {
                         blacklisted = 1;
                         break;
                     }
                 }
-                if (blacklisted) {
-                    setpriority(PRIO_PROCESS, pid, 20);
-                    continue;
-                }
+                if (blacklisted) continue;
 
                 entries[entry_count].pid = pid;
                 entries[entry_count].resident_size = pti.pti_resident_size;
@@ -325,4 +323,75 @@ void run_system_command_c(const char *cmd) {
     if (cmd) {
         system(cmd);
     }
+}
+
+void restore_blacklisted_priorities_c(void) {
+    /* Restore normal scheduling for all deprioritized processes when memory pressure is gone.
+       Uses taskpolicy -B to clear background scheduling class. */
+    int num_pids = proc_listpids(PROC_ALL_PIDS, 0, NULL, 0) / sizeof(pid_t);
+    if (num_pids <= 0) return;
+
+    pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
+
+    /* Only the blacklisted processes that actually get deprioritized during high pressure */
+    const char *restore_list[] = {
+        "oMLX", "omlx-server", "com.apple.Virtualization.VirtualMachine", "qemu-system-aarch64"
+    };
+
+    for (int i = 0; i < num_pids; i++) {
+        pid_t pid = all_pids[i];
+        if (pid < 200) continue;
+
+        char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
+        if (proc_pidpath(pid, pathbuf, sizeof(pathbuf)) > 0) {
+            char *bname = basename(pathbuf);
+            for (int b = 0; b < 4; b++) {
+                if (strcmp(bname, restore_list[b]) == 0) {
+                    char taskpolicy_cmd[64];
+                    snprintf(taskpolicy_cmd, sizeof(taskpolicy_cmd),
+                        "taskpolicy -p %d -B", pid);
+                    system(taskpolicy_cmd);
+                    break;
+                }
+            }
+        }
+    }
+
+    free(all_pids);
+}
+
+void deprioritize_blacklisted_c(void) {
+    /* Explicitly set background scheduling for blacklisted processes.
+       Call this during thrashing mitigation or bloodshed — NOT as a side effect of queries. */
+    int num_pids = proc_listpids(PROC_ALL_PIDS, 0, NULL, 0) / sizeof(pid_t);
+    if (num_pids <= 0) return;
+
+    pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
+
+    const char *blacklist[] = {
+        "oMLX", "omlx-server", "com.apple.Virtualization.VirtualMachine", "qemu-system-aarch64"
+    };
+
+    for (int i = 0; i < num_pids; i++) {
+        pid_t pid = all_pids[i];
+        if (pid < 200) continue;
+
+        char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
+        if (proc_pidpath(pid, pathbuf, sizeof(pathbuf)) > 0) {
+            char *bname = basename(pathbuf);
+            for (int b = 0; b < 4; b++) {
+                if (strcmp(bname, blacklist[b]) == 0) {
+                    char taskpolicy_cmd[64];
+                    snprintf(taskpolicy_cmd, sizeof(taskpolicy_cmd),
+                        "taskpolicy -p %d -b", pid);
+                    system(taskpolicy_cmd);
+                    break;
+                }
+            }
+        }
+    }
+
+    free(all_pids);
 }

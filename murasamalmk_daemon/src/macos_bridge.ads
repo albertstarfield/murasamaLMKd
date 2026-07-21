@@ -74,4 +74,10 @@ package MacOS_Bridge is
    procedure Run_System_Command_C (Cmd : char_array);
    pragma Import (C, Run_System_Command_C, "run_system_command_c");
 
+   procedure Restore_Blacklisted_Priorities_C;
+   pragma Import (C, Restore_Blacklisted_Priorities_C, "restore_blacklisted_priorities_c");
+
+   procedure Deprioritize_Blacklisted_C;
+   pragma Import (C, Deprioritize_Blacklisted_C, "deprioritize_blacklisted_c");
+
 end MacOS_Bridge;

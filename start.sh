@@ -1,4 +1,11 @@
 #!/bin/bash
+
+
+#disabled for now
+sleep 9999
+exit
+
+
 # Murasama LMKd - Daemon Launch Script
 # This script is executed by launchd (KeepAlive).
 # It starts the ML predictor and the Ada/SPARK daemon.

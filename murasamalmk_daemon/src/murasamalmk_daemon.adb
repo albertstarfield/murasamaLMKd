@@ -286,6 +286,9 @@ procedure Murasamalmk_Daemon is
             Set_Game_Mode_C (To_C ("on"));
             Ada.Text_IO.Put_Line ("[+] Enabled game mode.");
          end if;
+
+         -- Deprioritize blacklisted processes during thrashing mitigation
+         Deprioritize_Blacklisted_C;
       end if;
 
       Mitigation_State.Set_Mitigating (True);
@@ -410,6 +413,9 @@ procedure Murasamalmk_Daemon is
       Ada.Text_IO.Put_Line ("--- BLOODSHED INITIATED ---");
       Ada.Text_IO.Put_Line ("Reason: " & Trigger_Reason);
 
+      -- Deprioritize blacklisted processes during bloodshed
+      Deprioritize_Blacklisted_C;
+
       while Kill_Count < MAX_KILLS loop
          declare
             Top_Pids : PID_Array (int(1) .. int(TOP_N_PROCESSES)) := (others => 0);
@@ -460,110 +466,148 @@ procedure Murasamalmk_Daemon is
                   end;
                end loop;
 
-               -- Select target pid
+               -- Select and kill an eligible target, skipping system processes
                declare
-                  Target_Idx : Integer := -1;
-                  Max_Weight : Integer := -1;
-                  Phase_Desc : String (1 .. 64) := (others => ' ');
-                  Phase_Len  : Integer := 0;
+                  Skipped_Pids : array (1 .. TOP_N_PROCESSES) of PID_T := (others => 0);
+                  Skipped_Count : Natural := 0;
+                  Killed_Something : Boolean := False;
                begin
-                  -- 1. Check for weight priority
-                  for I in 1 .. Integer (Top_Count) loop
+                  for Attempt in 1 .. int(TOP_N_PROCESSES) loop
                      declare
-                        P_Name : constant String := Names (I) (1 .. Name_Lens (I));
-                        W      : constant Natural := Get_Weight (P_Name);
+                        Target_Idx : Integer := -1;
+                        Max_Weight : Integer := -1;
+                        Phase_Desc : String (1 .. 64) := (others => ' ');
+                        Phase_Len  : Integer := 0;
                      begin
-                        if W > WEIGHT_PRIORITY_THRESHOLD then
-                           if W > Max_Weight then
-                              Max_Weight := W;
-                              Target_Idx := I;
-                              Phase_Desc (1 .. 13) := "priority kill";
-                              Phase_Len := 13;
+                        -- 1. Check for weight priority (skip already-skipped PIDs)
+                        for I in 1 .. Integer (Top_Count) loop
+                           declare
+                              P_Name : constant String := Names (I) (1 .. Name_Lens (I));
+                              W      : constant Natural := Get_Weight (P_Name);
+                              Is_Skipped : Boolean := False;
+                           begin
+                              for S in 1 .. Skipped_Count loop
+                                 if Top_Pids (int(I)) = Skipped_Pids (S) then
+                                    Is_Skipped := True;
+                                    exit;
+                                 end if;
+                              end loop;
+                              if not Is_Skipped and then W > WEIGHT_PRIORITY_THRESHOLD then
+                                 if W > Max_Weight then
+                                    Max_Weight := W;
+                                    Target_Idx := I;
+                                    Phase_Desc (1 .. 13) := "priority kill";
+                                    Phase_Len := 13;
+                                 end if;
+                              end if;
+                           end;
+                        end loop;
+
+                        -- 2. Fallback to rate behavior (skip already-skipped PIDs)
+                        if Target_Idx = -1 then
+                           if Kill_Count < 2 then
+                              declare
+                                 Min_Rate : Long_Float := 999999.0;
+                              begin
+                                 for I in 1 .. Integer (Top_Count) loop
+                                    declare
+                                       Is_Skipped : Boolean := False;
+                                    begin
+                                       for S in 1 .. Skipped_Count loop
+                                          if Top_Pids (int(I)) = Skipped_Pids (S) then
+                                             Is_Skipped := True;
+                                             exit;
+                                          end if;
+                                       end loop;
+                                       if not Is_Skipped and then Rates (I) < Min_Rate then
+                                          Min_Rate := Rates (I);
+                                          Target_Idx := I;
+                                       end if;
+                                    end;
+                                 end loop;
+                                 if Target_Idx /= -1 then
+                                    if Kill_Count = 0 then
+                                       Phase_Desc (1 .. 25) := "first kill (lowest rate) ";
+                                       Phase_Len := 25;
+                                    else
+                                       Phase_Desc (1 .. 25) := "second kill (lowest rate)";
+                                       Phase_Len := 25;
+                                    end if;
+                                 end if;
+                              end;
+                           else
+                              declare
+                                 Max_Rate : Long_Float := -999999.0;
+                              begin
+                                 for I in 1 .. Integer (Top_Count) loop
+                                    declare
+                                       Is_Skipped : Boolean := False;
+                                    begin
+                                       for S in 1 .. Skipped_Count loop
+                                          if Top_Pids (int(I)) = Skipped_Pids (S) then
+                                             Is_Skipped := True;
+                                             exit;
+                                          end if;
+                                       end loop;
+                                       if not Is_Skipped and then Rates (I) > Max_Rate then
+                                          Max_Rate := Rates (I);
+                                          Target_Idx := I;
+                                       end if;
+                                    end;
+                                 end loop;
+                                 if Target_Idx /= -1 then
+                                    Phase_Desc (1 .. 25) := "third kill (highest rate)";
+                                    Phase_Len := 25;
+                                 end if;
+                              end;
                            end if;
                         end if;
+
+                        if Target_Idx /= -1 then
+                           declare
+                              T_PID  : constant PID_T := Top_Pids (int(Target_Idx));
+                              T_Name : constant String := Names (Target_Idx) (1 .. Name_Lens (Target_Idx));
+                              T_Path : char_array (size_t(1) .. size_t(1024)) := (others => ' ');
+                           begin
+                              Get_Process_Path_C (T_PID, T_Path, int(1024));
+
+                              if Is_System_Process_C (T_Path) /= 0 then
+                                 Ada.Text_IO.Put_Line ("[SKIP] PID " & PID_T'Image (T_PID) & " (" &
+                                   T_Name & ") is a protected system process. Skipping.");
+                                 Skipped_Count := Skipped_Count + 1;
+                                 Skipped_Pids (Skipped_Count) := T_PID;
+                              else
+                                 Ada.Text_IO.Put_Line ("Phase: " & Phase_Desc (1 .. Phase_Len));
+                                 Ada.Text_IO.Put_Line ("Target: PID " & PID_T'Image (T_PID) & " (" & T_Name & ")");
+
+                                 Queue_Zenity_Warning (T_Name, Trigger_Reason & " (" & Phase_Desc (1 .. Phase_Len) & ")");
+
+                                  declare
+                                     Kill_Result : int;
+                                     pragma Unreferenced (Kill_Result);
+                                  begin
+                                     Kill_Result := Kill_C (T_PID, int(9)); -- SIGKILL
+                                  end;
+                                 Kill_Count := Kill_Count + 1;
+                                 Increment_Weight (T_Name);
+                                 delay 0.2;
+                                 Killed_Something := True;
+                              end if;
+                           exception
+                              when others =>
+                                 Skipped_Count := Skipped_Count + 1;
+                                 if Target_Idx >= 1 and then Target_Idx <= Integer (Top_Count) then
+                                    Skipped_Pids (Skipped_Count) := Top_Pids (int(Target_Idx));
+                                 end if;
+                           end;
+                        end if;
+
+                        exit when Target_Idx = -1 or else Killed_Something;
                      end;
                   end loop;
 
-                  -- 2. fallback to rate behavior
-                  if Target_Idx = -1 then
-                     if Kill_Count < 2 then
-                        -- First and second kills: target lowest rate (often bloated dormant/leaky processes)
-                        declare
-                           Min_Rate : Long_Float := 999999.0;
-                        begin
-                           for I in 1 .. Integer (Top_Count) loop
-                              if Rates (I) < Min_Rate then
-                                 Min_Rate := Rates (I);
-                                 Target_Idx := I;
-                              end if;
-                           end loop;
-                           if Kill_Count = 0 then
-                              Phase_Desc (1 .. 25) := "first kill (lowest rate) ";
-                              Phase_Len := 25;
-                           else
-                              -- FIX: Changed slice from (1..26) to (1..25).
-                              -- REASON: The string literal "second kill (lowest rate)" is 25
-                              --         characters, not 26. Mismatched slice length causes
-                              --         Constraint_Error at runtime. (Warning: default)
-                              Phase_Desc (1 .. 25) := "second kill (lowest rate)";
-                              Phase_Len := 25;
-                           end if;
-                        end;
-                     else
-                           -- Third kill: target highest rate (active memory hoarder)
-                           declare
-                              Max_Rate : Long_Float := -999999.0;
-                           begin
-                              for I in 1 .. Integer (Top_Count) loop
-                                 if Rates (I) > Max_Rate then
-                                    Max_Rate := Rates (I);
-                                    Target_Idx := I;
-                                 end if;
-                              end loop;
-                              -- FIX: Changed slice from (1..26) to (1..25).
-                              -- REASON: The string literal "third kill (highest rate)" is 25
-                              --         characters, not 26. Mismatched slice length causes
-                              --         Constraint_Error at runtime. (Warning: default)
-                              Phase_Desc (1 .. 25) := "third kill (highest rate)";
-                              Phase_Len := 25;
-                        end;
-                     end if;
-                  end if;
-
-                  if Target_Idx /= -1 then
-                     declare
-                        T_PID  : constant PID_T := Top_Pids (int(Target_Idx));
-                        T_Name : constant String := Names (Target_Idx) (1 .. Name_Lens (Target_Idx));
-                        -- FIX: Removed unused 'Res' variable.
-                        -- REASON: The return value of Kill_C was assigned to Res but never
-                        --         read. The kill result is not checked, so the variable is
-                        --         unnecessary. (Warning: -gnatwm)
-                     begin
-                        Ada.Text_IO.Put_Line ("Phase: " & Phase_Desc (1 .. Phase_Len));
-                        Ada.Text_IO.Put_Line ("Target: PID " & PID_T'Image (T_PID) & " (" & T_Name & ")");
-
-                        Queue_Zenity_Warning (T_Name, Trigger_Reason & " (" & Phase_Desc (1 .. Phase_Len) & ")");
-
-                         -- Kill target
-                         -- FIX: Removed Res assignment. The return value of Kill_C is not
-                         --         checked, so we discard it directly. (Warning: -gnatwm)
-                         declare
-                            Kill_Result : int;
-                            pragma Unreferenced (Kill_Result);
-                         begin
-                            Kill_Result := Kill_C (T_PID, int(9)); -- SIGKILL
-                         end;
-                        Kill_Count := Kill_Count + 1;
-
-                        -- Increment weight
-                        Increment_Weight (T_Name);
-
-                        delay 0.2;
-                      exception
-                        when others => null;
-                     end;
-                  else
-                     Ada.Text_IO.Put_Line ("No eligible target found.");
+                  if not Killed_Something then
+                     Ada.Text_IO.Put_Line ("No eligible target found. All candidates are protected.");
                      exit;
                   end if;
                end;
@@ -975,6 +1019,9 @@ begin
                Now := Clock;
                Current_Free_MB := Long_Float (Get_Free_MB_C (Page_Size));
                Current_Pressure := Integer (Get_Memory_Pressure_Level_C);
+            else
+               -- Memory pressure is normal: restore blacklisted processes to normal scheduling
+               Restore_Blacklisted_Priorities_C;
             end if;
          end;
 
