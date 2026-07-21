@@ -1,6 +1,9 @@
 *.csv
 *enticinst.txt
 
+# opencode
+.opencode/
+
 # GPRbuild and Alire compiled object files
 **/obj/
 **/alire/
