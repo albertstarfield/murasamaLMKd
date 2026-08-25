@@ -20,3 +20,6 @@ venv/
 
 # --- macOS noise ---
 .DS_Store
+
+# --- Editor/agent workspace ---
+.opencode/
