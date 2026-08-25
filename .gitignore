@@ -23,3 +23,6 @@ venv/
 
 # --- Editor/agent workspace ---
 .opencode/
+
+# --- Daemon runtime state (spawn scripts, pid files) ---
+/run/
