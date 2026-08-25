@@ -1,15 +1,22 @@
-*.csv
-*enticinst.txt
+# --- Alire / GNAT build artifacts ---
+bin/
+obj/
+alire/
+*.o
+*.ali
 
-# opencode
-.opencode/
+# --- Runtime artifacts (generated at runtime, never source-controlled) ---
+EARU_data.dat
+ml_prediction.txt
+ml_predictor.log
+weights.csv
+*.log
 
-# GPRbuild and Alire compiled object files
-**/obj/
-**/alire/
+# --- Python ---
+__pycache__/
+*.pyc
+venv/
+.venv/
 
-# Python compiled cache directories
-**/__pycache__/
-
-# Python virtual environments
-**/venv/
+# --- macOS noise ---
+.DS_Store
