@@ -3,13 +3,28 @@ package Murasama_Types is
    pragma SPARK_Mode (On);
 
    -- ==================== CONFIGURATION ====================
-   POLL_INTERVAL_MS            : constant := 25;
+   -- All timing constants are single sources of truth (🟡22): every loop in
+   -- the daemon derives its delays from these values. POLL_INTERVAL_MS is
+   -- 100ms: measured steady-state CPU of the main poll loop is <0.9% at this
+   -- rate; a faster poll would violate that budget without adding safety.
+
+   -- Main monitoring loop period. Wired into main.adb main loop + runner idle.
+   POLL_INTERVAL_MS            : constant := 100;
+   -- Health-report / telemetry-export cadence (5s).
    REPORT_INTERVAL_MS          : constant := 5000;
    CRITICAL_FREE_MB            : constant := 128.0;
    PANIC_VELOCITY_MB_S         : constant := 21000.0;
    MIN_PRESSURE_LEVEL_TO_KILL  : constant := 4;
    GRADIENT_MEASURE_MS         : constant := 100;
    TOP_N_PROCESSES             : constant := 3;
+
+   -- Thrashing_Task sampling cadence (snapshot pair spacing + idle sleep).
+   SNAPSHOT_SPACING_MS         : constant := 100;
+   THRASHING_IDLE_MS           : constant := 900;
+
+   -- Weight table capacity: Weights_Array index bound and full-table checks
+   -- both derive from this constant so they can never drift apart.
+   WEIGHTS_TABLE_SIZE          : constant := 128;
 
    WEIGHTS_FILE                : constant String := "/usr/local/murasamaLMKd/murasamalmk_daemon/weights.csv";
    EARU_DATA_FILE              : constant String := "/Volumes/EARU_dataIO/EARU_data.dat";
@@ -33,7 +48,7 @@ package Murasama_Types is
       Value  : Natural;
    end record;
 
-   type Weights_Array is array (1 .. 128) of Weight_Record;
+   type Weights_Array is array (1 .. WEIGHTS_TABLE_SIZE) of Weight_Record;
 
    -- ==================== SPARK-VERIFIED PURE FUNCTIONS ====================
    -- These pure functions are verified by gnatprove --level=4 to have no

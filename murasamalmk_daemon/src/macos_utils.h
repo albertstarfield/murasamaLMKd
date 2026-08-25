@@ -45,4 +45,13 @@ void restore_blacklisted_priorities_c(void);
 // Explicitly set background scheduling for blacklisted processes
 void deprioritize_blacklisted_c(void);
 
+// Pin all current + future daemon memory in RAM via mlockall(2). 0 = success.
+int lock_all_memory_c(void);
+
+// Install SIGTERM/SIGINT handlers that only raise an internal flag (async-safe).
+void install_shutdown_handlers_c(void);
+
+// Poll the shutdown flag raised by the signal handlers. 1 = shutdown requested.
+int shutdown_requested_c(void);
+
 #endif // MACOS_UTILS_H

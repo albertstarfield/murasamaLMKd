@@ -13,13 +13,22 @@ project Murasamalmk_Daemon is
    end Compiler;
 
    package Linker is
+      --  FIX(🟡21): macos_utils.o path was previously an ABSOLUTE path pinned to
+      --  obj/development/, silently linking a stale/wrong-profile object when
+      --  Build_Profile changes (e.g. release builds). Now derived from
+      --  Build_Profile exactly like Object_Dir above, and relative to the
+      --  project dir so the tree stays relocatable.
+      --  FIX(🔴13): -no_pie required by project security standard (code-review.md
+      --  §static compilation): fixed-load-address executable, no ASLR slide for
+      --  a root daemon that pins itself in RAM.
       for Switches ("Ada") use (
          "-framework", "AppKit",
          "-framework", "Foundation",
          "-framework", "CoreGraphics",
          "-lproc",
+         "-Wl,-no_pie",
          "-Wl,-syslibroot,/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
-         "/usr/local/murasamaLMKd/murasamalmk_daemon/obj/development/macos_utils.o"
+         "obj/" & Murasamalmk_Daemon_Config.Build_Profile & "/macos_utils.o"
       );
    end Linker;
 

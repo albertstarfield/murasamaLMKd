@@ -80,4 +80,18 @@ package MacOS_Bridge is
    procedure Deprioritize_Blacklisted_C;
    pragma Import (C, Deprioritize_Blacklisted_C, "deprioritize_blacklisted_c");
 
+   -- Pin all daemon memory via mlockall(2). Returns 0 on success, -1 on failure.
+   -- Rationale: a memory-pressure mitigation daemon must never be paged out
+   -- during a crisis; MCL_FUTURE also pins all future heap allocations.
+   function Lock_All_Memory_C return int;
+   pragma Import (C, Lock_All_Memory_C, "lock_all_memory_c");
+
+   -- Install async-safe SIGTERM/SIGINT flag-only handlers (see macos_utils.m).
+   procedure Install_Shutdown_Handlers_C;
+   pragma Import (C, Install_Shutdown_Handlers_C, "install_shutdown_handlers_c");
+
+   -- Poll shutdown flag: returns 1 when SIGTERM/SIGINT was received.
+   function Shutdown_Requested_C return int;
+   pragma Import (C, Shutdown_Requested_C, "shutdown_requested_c");
+
 end MacOS_Bridge;

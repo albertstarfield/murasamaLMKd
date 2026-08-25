@@ -21,16 +21,19 @@ export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PA
 
 echo "=== Murasama LMKd Launch ==="
 
-# 1. Build only if binary is missing or source is newer than binary
-if [ ! -f "${BIN_PATH}" ] || [ "${DAEMON_DIR}/src/murasamalmk_daemon.adb" -nt "${BIN_PATH}" ]; then
-  echo "[BUILD] Binary missing or stale. Compiling..."
+# 1. Build only if binary is missing or ANY source is newer than binary.
+#    (Audit 🟡26: previously only murasamalmk_daemon.adb was checked, so edits
+#     to other Ada sources or the ObjC bridge silently skipped rebuilds.)
+STALE_SRC=$(find "${DAEMON_DIR}/src" -type f \( -name '*.adb' -o -name '*.ads' -o -name '*.m' -o -name '*.h' \) -newer "${BIN_PATH}" 2>/dev/null | head -n 1)
+if [ ! -f "${BIN_PATH}" ] || [ -n "${STALE_SRC}" ]; then
+  echo "[BUILD] Binary missing or stale (newest offender: ${STALE_SRC:-<none>}). Compiling..."
   cd "${DAEMON_DIR}"
 
-  # Compile Objective-C bridge
+  # Compile Objective-C bridge (stderr NOT silenced: build failures must surface)
   mkdir -p obj/development
   /usr/bin/clang -g -O2 -x objective-c -c src/macos_utils.m -o obj/development/macos_utils.o \
     -framework AppKit -framework Foundation -framework CoreGraphics -lproc \
-    -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk 2>/dev/null
+    -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 
   # Compile Ada/SPARK daemon
   "${ALR}" build 2>&1

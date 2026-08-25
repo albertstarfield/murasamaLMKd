@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <libgen.h>
+#include <sys/mman.h>
+#include <errno.h>
+#include <signal.h>
 
 uint64_t get_page_size_c(void) {
     vm_size_t page_size;
@@ -119,6 +122,14 @@ void get_process_path_c(int pid, char *out_path, int max_len) {
     }
 }
 
+// Thread-safe basename extraction (POSIX basename() may modify its input or
+// return a static buffer shared across concurrent callers; this pure helper
+// has neither problem). Returns pointer INTO path -- no allocation, no copy.
+static const char *path_basename_of(const char *path) {
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
 int is_system_process_c(const char *path) {
     if (!path) return 1;
 
@@ -139,6 +150,12 @@ int is_system_process_c(const char *path) {
         strstr(path, "/System/Library/ExtensionKit") ||
         strstr(path, "/Library/SystemExtensions")) return 1;
 
+    // Exact-basename matching (audit 🟡18/🔵32): the previous strstr() scan
+    // matched these names ANYWHERE in the path, so e.g. "/Users/x/myDockHelper"
+    // was protected because of "Dock". Protection must be precise: a process
+    // is on this list iff its final path component equals an entry exactly.
+    // Path-STRUCTURE checks above (Frameworks, CoreServices, /usr/libexec)
+    // intentionally remain substring-based: they describe locations, not names.
     const char *excluded[] = {
         "kernel_task", "WindowServer", "launchd", "sysmond", "apsd", "configd", "powerd",
         "coreaudiod", "loginwindow", "ScreenSaverEngine", "coreauthd", "SecurityAgent",
@@ -149,7 +166,7 @@ int is_system_process_c(const char *path) {
         "adelaide_server", "adelaide_watchdog"
     };
     for (int i = 0; i < 38; i++) {
-        if (strstr(path, excluded[i])) return 1;
+        if (strcmp(path_basename_of(path), excluded[i]) == 0) return 1;
     }
 
     return 0;
@@ -182,14 +199,30 @@ int get_process_tree_c(int root_pid, int *out_pids, int max_count) {
     if (num_pids <= 0) return 0;
 
     pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    if (all_pids == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for process list in %s\n",
+                (size_t)(sizeof(pid_t) * (num_pids + 100)), __func__);
+        return 0;
+    }
     num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
 
     int count = 0;
-    int *queue = malloc(sizeof(int) * (num_pids + 100));
+    int queue_capacity = num_pids + 100;
+    int *queue = malloc(sizeof(int) * queue_capacity);
+    if (queue == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for BFS queue in %s\n",
+                (size_t)(sizeof(int) * queue_capacity), __func__);
+        free(all_pids);
+        return 0;
+    }
     int head = 0;
     int tail = 0;
 
-    queue[tail++] = root_pid;
+    if (tail < queue_capacity) {
+        queue[tail++] = root_pid;
+    } else {
+        fprintf(stderr, "[MACOS_UTILS ERROR] process-tree BFS queue full (cap=%d) in %s\n", queue_capacity, __func__);
+    }
     out_pids[count++] = root_pid;
 
     while (head < tail && count < max_count) {
@@ -204,7 +237,11 @@ int get_process_tree_c(int root_pid, int *out_pids, int max_count) {
                 }
                 if (!dup && count < max_count) {
                     out_pids[count++] = pid;
-                    queue[tail++] = pid;
+                    if (tail < queue_capacity) {
+                        queue[tail++] = pid;
+                    } else {
+                        fprintf(stderr, "[MACOS_UTILS ERROR] process-tree BFS queue full (cap=%d) in %s\n", queue_capacity, __func__);
+                    }
                 }
             }
         }
@@ -251,9 +288,20 @@ int get_top_processes_by_memory_c(int *out_pids, uint64_t *out_resident_bytes, i
     if (num_pids <= 0) return 0;
 
     pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    if (all_pids == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for process list in %s\n",
+                (size_t)(sizeof(pid_t) * (num_pids + 100)), __func__);
+        return 0;
+    }
     num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
 
     ProcessEntry *entries = malloc(sizeof(ProcessEntry) * num_pids);
+    if (entries == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for process entries in %s\n",
+                (size_t)(sizeof(ProcessEntry) * num_pids), __func__);
+        free(all_pids);
+        return 0;
+    }
     int entry_count = 0;
 
     for (int i = 0; i < num_pids; i++) {
@@ -306,6 +354,11 @@ int list_pids_c(int *out_pids, int max_count) {
     if (num_pids <= 0) return 0;
 
     pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    if (all_pids == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for process list in %s\n",
+                (size_t)(sizeof(pid_t) * (num_pids + 100)), __func__);
+        return 0;
+    }
     num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
 
     int count = 0;
@@ -332,6 +385,11 @@ void restore_blacklisted_priorities_c(void) {
     if (num_pids <= 0) return;
 
     pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    if (all_pids == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for process list in %s\n",
+                (size_t)(sizeof(pid_t) * (num_pids + 100)), __func__);
+        return;
+    }
     num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
 
     /* Only the blacklisted processes that actually get deprioritized during high pressure */
@@ -368,6 +426,11 @@ void deprioritize_blacklisted_c(void) {
     if (num_pids <= 0) return;
 
     pid_t *all_pids = malloc(sizeof(pid_t) * (num_pids + 100));
+    if (all_pids == NULL) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] malloc(%zu) failed for process list in %s\n",
+                (size_t)(sizeof(pid_t) * (num_pids + 100)), __func__);
+        return;
+    }
     num_pids = proc_listpids(PROC_ALL_PIDS, 0, all_pids, sizeof(pid_t) * (num_pids + 100)) / sizeof(pid_t);
 
     const char *blacklist[] = {
@@ -394,4 +457,54 @@ void deprioritize_blacklisted_c(void) {
     }
 
     free(all_pids);
+}
+
+int lock_all_memory_c(void) {
+    /* Pin ALL current and future memory pages of this process (mlockall).
+       A memory-pressure daemon must never be paged out during crisis; MCL_FUTURE
+       additionally pins every future heap allocation made by the hardened
+       malloc paths above. Requires root (the daemon runs as root via launchd).
+       Returns 0 on success, -1 on failure (errno preserved + reported). */
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+        int saved_errno = errno;
+        fprintf(stderr,
+                "[MACOS_UTILS ERROR] mlockall(MCL_CURRENT|MCL_FUTURE) failed in %s: errno=%d (%s)\n",
+                __func__, saved_errno, strerror(saved_errno));
+        return -1;
+    }
+    fprintf(stderr,
+            "[MACOS_UTILS INFO] mlockall(MCL_CURRENT|MCL_FUTURE) succeeded in %s — daemon memory pinned\n",
+            __func__);
+    return 0;
+}
+
+/* ---- Clean-shutdown signal plumbing ----
+   Async-signal-safe design: the handler ONLY sets a sig_atomic_t flag.
+   The Ada main loop polls shutdown_requested_c() every cycle and performs
+   all cleanup (un-boost priorities, game mode auto, kill sidecar) in
+   normal tasking context. No locks, no mallocs, no stdio in handler. */
+
+static volatile sig_atomic_t g_shutdown_requested = 0;
+
+static void shutdown_flag_handler(int sig) {
+    (void)sig; /* SIGTERM or SIGINT — same meaning here */
+    g_shutdown_requested = 1;
+}
+
+void install_shutdown_handlers_c(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = shutdown_flag_handler;
+    if (sigaction(SIGTERM, &sa, NULL) != 0) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] sigaction(SIGTERM) failed in %s: %s\n",
+                __func__, strerror(errno));
+    }
+    if (sigaction(SIGINT, &sa, NULL) != 0) {
+        fprintf(stderr, "[MACOS_UTILS ERROR] sigaction(SIGINT) failed in %s: %s\n",
+                __func__, strerror(errno));
+    }
+}
+
+int shutdown_requested_c(void) {
+    return g_shutdown_requested ? 1 : 0;
 }
