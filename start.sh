@@ -2,8 +2,8 @@
 
 
 #disabled for now
-sleep 9999
-exit
+#sleep 9999
+#exit
 
 
 # Murasama LMKd - Daemon Launch Script

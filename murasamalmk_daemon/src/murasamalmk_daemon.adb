@@ -702,7 +702,6 @@ procedure Murasamalmk_Daemon is
    -- Check if a process with given PID is alive
    function Is_Process_Alive (PID : PID_T) return Boolean is
       Result : int;
-      pragma Unreferenced (Result);
    begin
       -- kill(pid, 0) checks existence without sending signal
       Result := Kill_C (PID, 0);
@@ -722,8 +721,8 @@ procedure Murasamalmk_Daemon is
       begin
          Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Script_Path);
          Ada.Text_IO.Put_Line (File, "#!/bin/bash");
-         Ada.Text_IO.Put_Line (File, ML_PREDICTOR_PATH & " " & ML_PREDICTOR_SCRIPT &
-           " > /dev/null 2>&1 &");
+          Ada.Text_IO.Put_Line (File, ML_PREDICTOR_PATH & " " & ML_PREDICTOR_SCRIPT &
+            " > " & ML_PREDICTOR_LOG & " 2>&1 &");
          Ada.Text_IO.Put_Line (File, "echo $!");
          Ada.Text_IO.Close (File);
 
