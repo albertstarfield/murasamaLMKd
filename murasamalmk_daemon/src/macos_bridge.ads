@@ -3,7 +3,7 @@ with Interfaces.C;
 package MacOS_Bridge is
    -- SPARK_Mode => Off: This package declares C imported subprograms via
    -- pragma Import(C, ...). Imported foreign code cannot be verified by SPARK
-   -- because its implementation is outside the SPARK domain. All 16 subprograms
+   -- because its implementation is outside the SPARK domain. All subprograms
    -- here are thin bindings to Objective-C Mach/libproc APIs in macos_utils.m.
    pragma SPARK_Mode (Off);
    pragma Preelaborate;
@@ -28,6 +28,16 @@ package MacOS_Bridge is
 
    function Get_Wired_MB_C (Page_Size : UINT64_T) return double;
    pragma Import (C, Get_Wired_MB_C, "get_wired_mb_c");
+
+   -- VM compressor occupied size in MB (Activity Monitor "Compressor" line).
+   -- Source: host_statistics64 compressor_page_count (XNU HOST_VM_INFO64).
+   function Get_Compressor_MB_C (Page_Size : UINT64_T) return double;
+   pragma Import (C, Get_Compressor_MB_C, "get_compressor_mb_c");
+
+   -- Swap usage in MB via sysctl vm.swapusage (struct xsw_usage).
+   -- On sysctl failure both outputs are 0.0 (documented in macos_utils.m).
+   procedure Get_Swap_Usage_C (Out_Total_MB : out double; Out_Used_MB : out double);
+   pragma Import (C, Get_Swap_Usage_C, "get_swap_usage_c");
 
    function Get_Process_Memory_C (PID : PID_T) return UINT64_T;
    pragma Import (C, Get_Process_Memory_C, "get_process_memory_c");
@@ -55,6 +65,9 @@ package MacOS_Bridge is
 
    type PID_Array is array (int range <>) of aliased PID_T;
    type UINT64_Array is array (int range <>) of aliased UINT64_T;
+   -- int64_t (C "long long" on Darwin LP64): leak-scan ages and thresholds.
+   subtype INT64_T is long_long;
+   type INT64_Array is array (int range <>) of aliased INT64_T;
 
    function Get_Process_Tree_C (Root_PID : PID_T; Out_Pids : in out PID_Array; Max_Count : int) return int;
    pragma Import (C, Get_Process_Tree_C, "get_process_tree_c");
@@ -67,6 +80,41 @@ package MacOS_Bridge is
 
    function Get_Top_Processes_By_Memory_C (Out_Pids : in out PID_Array; Out_Resident_Bytes : in out UINT64_Array; N : int; Exclude_PID : PID_T) return int;
    pragma Import (C, Get_Top_Processes_By_Memory_C, "get_top_processes_by_memory_c");
+
+   -- Activity Monitor methodology: top-N by ri_phys_footprint (proc_pid_rusage),
+   -- which counts resident + compressed + internal memory — NOT plain RSS.
+   -- Returns count filled (0 on error). Index 0 = largest footprint (T1).
+   function Get_Top_Processes_By_Footprint_C (Out_Pids : in out PID_Array; Out_Footprint_Bytes : in out UINT64_Array; N : int; Exclude_PID : PID_T) return int;
+   pragma Import (C, Get_Top_Processes_By_Footprint_C, "get_top_processes_by_footprint_c");
+
+   -- Leak scan: returns pids with ri_phys_footprint STRICTly >
+   -- Min_Footprint_Bytes AND wall-clock age STRICTly > Min_Age_Seconds,
+   -- largest-footprint-first; self (getpid) and pid < 200 excluded in C.
+   -- Returns count filled (0 = none matched OR scan error — errors are
+   -- logged to stderr in macos_utils.m; caller treats both as no-op).
+   -- Citations: proc_listpids https://developer.apple.com/documentation/libproc/1505977-proc_listpids
+   --            proc_pid_rusage https://developer.apple.com/documentation/libproc/1505956-proc_pidrusage
+   --            proc_pidinfo https://developer.apple.com/documentation/libproc/1505969-proc_pidinfo
+   function Find_Leak_Candidates_C
+     (Min_Footprint_Bytes : INT64_T;
+      Min_Age_Seconds     : INT64_T;
+      Out_Pids            : in out PID_Array;
+      Out_Footprint_Bytes : in out UINT64_Array;
+      Out_Age_Seconds     : in out INT64_Array;
+      N                   : int) return int;
+   pragma Import (C, Find_Leak_Candidates_C, "find_leak_candidates_c");
+
+   -- Owner of a pid: PROC_PIDTBSDINFO pbi_uid + getpwuid_r username.
+   -- Returns 0 only when BOTH outputs are valid; -1 = owner unknown —
+   -- policy rule: caller must NOT kill on -1 (missing data => no kill).
+   -- Citations: proc_pidinfo https://developer.apple.com/documentation/libproc/1505969-proc_pidinfo
+   --            getpwuid_r https://developer.apple.com/documentation/man/3/getpwuid_r
+   function Get_User_Info_C
+     (PID          : PID_T;
+      Out_UID      : out UID_T;
+      Out_Username : out char_array;
+      Max_Len      : int) return int;
+   pragma Import (C, Get_User_Info_C, "get_user_info_c");
 
    function List_Pids_C (Out_Pids : in out PID_Array; Max_Count : int) return int;
    pragma Import (C, List_Pids_C, "list_pids_c");

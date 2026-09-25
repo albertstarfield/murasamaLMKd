@@ -12,6 +12,58 @@ package Murasama_Types is
    POLL_INTERVAL_MS            : constant := 100;
    -- Health-report / telemetry-export cadence (5s).
    REPORT_INTERVAL_MS          : constant := 5000;
+   -- Memory-monitor cadence (10s): logs XNU pressure level, free/wired/
+   -- compressor MB, swap usage, and top processes by phys_footprint
+   -- (Activity Monitor methodology). Read-only — never triggers mitigation.
+   MEM_MONITOR_INTERVAL_MS     : constant := 10000;
+   -- How many top-footprint processes the 10s monitor logs per cycle.
+   MEM_MONITOR_TOP_N           : constant := 5;
+   -- Size of the standalone top-10 footprint listing mechanism
+   -- (Murasama_Footprint.Get_Top_10_By_Footprint). Independent of
+   -- MEM_MONITOR_TOP_N: the monitor logs 5 lines per 10s cycle, while this
+   -- constant sizes the on-demand query procedure (🟡23).
+   FOOTPRINT_TOP_10_N          : constant := 10;
+
+    -- ==================== LEAK KILLER (memory-leak reaper) ====================
+    -- Policy thresholds for Murasama_Leak_Killer.Check_And_Kill. A process is
+    -- a leak candidate only when ALL of these hold (each STRICT):
+    --   * owner username does NOT contain '_'  (the *_* rule — macOS service
+    --     accounts like _spotlight/_windowserver are exempt),
+    --   * owner has NO home directory /Users/<username> (USER PRIORITY —
+    --     user processes never respawn themselves, so they are never
+    --     reaped; vendor sloppiness must be endured by the user, not
+    --     punished by killing the USER's processes),
+    --   * ri_phys_footprint > 1 GB (Activity Monitor "Memory" methodology),
+    --   * wall-clock age    > 12 h (now - pbi_start_tvsec).
+    -- The daemon's own pid is additionally exempt (enforced once in C by
+    -- getpid()). There is deliberately NO uid-0 exemption: root-owned
+    -- vendor daemons (LuLu, XProtect, root leakers) — which run without
+    -- user volition and respawn themselves — are exactly the targets.
+
+   -- 1 GB strict threshold on phys_footprint (2^30 bytes).
+   LEAK_MIN_FOOTPRINT_BYTES    : constant := 1024 * 1024 * 1024;
+   -- 12 hours (43200 s) strict minimum wall-clock process age.
+   LEAK_MIN_AGE_SECONDS        : constant := 12 * 3600;
+   -- Leak-scan cadence (10 min): the thresholds are hourly-scale, so a
+   -- faster scan adds CPU cost without materially changing kill latency
+   -- (worst case = interval + scan duration).
+   LEAK_CHECK_INTERVAL_MS      : constant := 600_000;
+   -- Safety valve: at most this many SIGKILLs per scan cycle — a wrong
+   -- policy or pathological system can never wipe the process table in
+   -- one pass; remaining candidates are re-evaluated next cycle.
+   LEAK_MAX_KILLS_PER_CYCLE    : constant := 4;
+   -- Scan buffer: max candidates fetched per cycle (largest-first; any
+   -- matches beyond the buffer wait for later cycles after the cap).
+   LEAK_MAX_CANDIDATES         : constant := 16;
+    -- Phase gate: False = DRY-RUN ("[LEAK WOULD KILL]" log lines only),
+    -- True = actually SIGKILL. Constant (not variable) because flipping it
+    -- requires a rebuild + daemon restart either way; flip ONLY after
+    -- reviewing dry-run output. Phase 2 ENABLED 2026-09-25 after dry-run
+    -- review + user priority policy finalized: /Users/ homes exempt
+    -- (user priority), no uid-0 exemption (vendor root daemons are the
+    -- targets: LuLu 689 / root python 55883 were dry-run exempt under the
+    -- old uid-0 rule; _windowserver 1723 exempt via *_*).
+    LEAK_KILL_ENABLED           : constant Boolean := True;
    CRITICAL_FREE_MB            : constant := 128.0;
    PANIC_VELOCITY_MB_S         : constant := 21000.0;
    MIN_PRESSURE_LEVEL_TO_KILL  : constant := 4;

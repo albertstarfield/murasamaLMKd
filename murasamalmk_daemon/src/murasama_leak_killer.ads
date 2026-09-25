@@ -1,0 +1,225 @@
+with MacOS_Bridge;
+with Murasama_Types;
+
+-- ============================================================================
+-- PACKAGE: Murasama_Leak_Killer
+-- ============================================================================
+--
+-- PURPOSE: Periodic memory-leak reaper. Scans all processes and SIGKILLs
+--   those that match ALL of the configured leak criteria (Murasama_Types):
+--     * owner username does NOT contain '_'  (the *_* rule: macOS service
+--       accounts such as _spotlight/_windowserver are exempt),
+--     * owner has NO home directory /Users/<username> (USER PRIORITY:
+--       processes belonging to real users of this Mac are never reaped -
+--       user applications are not designed to respawn themselves, so a
+--       kill would destroy work in progress; vendor sloppiness is a
+--       burden the user must endure, never something punished by killing
+--       the USER's processes),
+--     * ri_phys_footprint > LEAK_MIN_FOOTPRINT_BYTES (1 GB - Activity
+--       Monitor "Memory" column methodology: resident + compressed +
+--       internal, NOT plain RSS),
+--     * wall-clock age > LEAK_MIN_AGE_SECONDS (12 hours),
+--   plus one local safety exemption: the daemon's own pid (enforced once,
+--   in C, by getpid()). The targets are vendor/system daemons running
+--   WITHOUT user volition or authorization (LuLu, XProtect, root-owned
+--   leakers) that eat what the user/customer paid for - all of which
+--   respawn themselves when killed. Phase-gated by LEAK_KILL_ENABLED:
+--   False = dry-run (log "[LEAK WOULD KILL]" only), True = send SIGKILL
+--   (current value: True - Phase 2, enabled 2026-09-25 after dry-run
+--   review).
+--
+-- AXIOMS:
+-- -------
+-- AXIOM 1: C-function contract (macos_utils.h / macos_bridge.ads):
+--   Find_Leak_Candidates_C returns pids whose phys_footprint STRICTly
+--   exceeds Min_Footprint_Bytes AND whose wall-clock age STRICTly exceeds
+--   Min_Age_Seconds, largest-footprint-first, self (getpid) and pid < 200
+--   already excluded; returns 0 on "none matched" AND on any scan error
+--   (errors go to stderr in macos_utils.m - both are safe no-ops).
+--   (from: function find_leak_candidates_c in src/macos_utils.h,
+--    binding Find_Leak_Candidates_C in src/macos_bridge.ads)
+--
+-- AXIOM 2: 1 GB threshold is on ri_phys_footprint (Activity Monitor
+--   "Memory" column: resident + compressed + internal - NOT plain RSS).
+--   A process holding 1 GB as compressed memory counts toward the leak
+--   threshold. (user requirement + XNU proc_pid_rusage semantics)
+--
+-- AXIOM 3: C-function contract for owner data: Get_User_Info_C returns 0
+--   only when BOTH uid and username are validly written (PROC_PIDTBSDINFO
+--   pbi_uid + getpwuid_r); returns -1 with outputs reset when either step
+--   fails (pid exited, no passwd entry). -1 therefore means "owner is
+--   UNKNOWN", never "owner is harmless".
+--   (from: function get_user_info_c in src/macos_utils.h)
+--
+-- AXIOM 4 (user priority; user requirement 2026-09-25): The *_* rule is a
+--   substring test: any username containing '_' is exempt (macOS creates
+--   service accounts as _name). The human-user rule is a filesystem test:
+--   /Users/<username> existing means a real user's home directory, so the
+--   process is exempt - user processes are NOT designed to respawn
+--   themselves, while every vendor process in scope (LuLu, XProtect
+--   daemons, root-owned leakers) DOES respawn. There is deliberately NO
+--   uid-0 exemption: root-owned vendor daemons are exactly the targets -
+--   they run without user volition/authorization and eat the user's
+--   resources.
+--   (from: user requirement + macOS account/home-directory conventions)
+--
+-- AXIOM 5: The daemon runs as root (LaunchDaemon), so kill(2) may target
+--   any process; kill still fails with ESRCH (already exited) or EPERM
+--   (protected/kern) - the return code must be checked, never assumed.
+--   (from: /Library/LaunchDaemons/...murasamalmkd.plist run as root,
+--    kill(2) man page)
+--
+-- AXIOM 6: LEAK_KILL_ENABLED = False means the kill() call is
+--   unreachable - candidates are logged and counted, zero signals are
+--   sent (dry-run / Phase 1). The current value is True (Phase 2,
+--   enabled 2026-09-25 after dry-run review); flipping it requires
+--   rebuild + daemon restart.
+--   (from: Murasama_Types.LEAK_KILL_ENABLED declaration)
+--
+-- THEOREMS:
+-- ---------
+-- THEOREM 1 (no-kill-on-unknown): A candidate whose owner lookup returns
+--   -1 is NEVER killed; it is skipped with a Warn log line.
+--   PROOF: APPLICATION STEP 2 checks the Get_User_Info_C result and
+--   branches to "skip + Warn" on /= 0 before any kill decision exists.
+--
+-- THEOREM 2 (total failure containment): Check_And_Kill NEVER propagates
+--   an exception. On any Ada-level failure the handler emits a single
+--   Murasama_Log.Error line with Exception_Information and returns.
+--   Because it cannot raise, its caller's LEAK_CHECK_INTERVAL_MS
+--   timestamp always advances (no hot-loop risk, T2 of the monitor gate).
+--   PROOF: APPLICATION STEP 6 wraps the whole body in an exception
+--   handler with no re-raise; there is no other exit path that skips it.
+--
+-- THEOREM 3 (exemption soundness): No process is ever killed if its
+--   username contains '_', if /Users/<username> exists for its owner, or
+--   if it is the daemon's own pid. Self-exclusion is enforced once, in C,
+--   by getpid() inside the scan (AXIOM 1) - getpid() cannot fail or lie,
+--   so a second Ada-side check would be dead code (no-dead-code rule);
+--   the Ada-side exemptions are the two branch tests below.
+--   PROOF: APPLICATION STEPS 3-4 test the username and home-directory
+--   conditions as the first two branches of an elsif chain whose final
+--   `else` holds the kill site (STEP 5c); the kill site is therefore
+--   reachable only when BOTH tests fail (neither exemption applies), and
+--   the candidate set itself already excludes self (AXIOM 1).
+--
+-- THEOREM 4 (kill cap): One invocation sends at most
+--   LEAK_MAX_KILLS_PER_CYCLE (4) signals; the loop counter Killed is
+--   compared before each candidate at APPLICATION STEP 5a (loop head).
+--
+-- THEOREM 5 (dry-run purity): With LEAK_KILL_ENABLED = False, the libc
+--   kill function is never called (APPLICATION STEP 5b is the only
+--   branch that can reach the kill site, and it diverts first),
+--   so dry-run mode emits logs only - provable by reading the single gate.
+--
+-- THEOREM 6 (determinism): Output is log lines only; no return values,
+--   no shared state mutation - two invocations on the same system state
+--   produce the same decisions (largest-first order per AXIOM 1).
+--
+-- APPLICATIONS:
+-- -------------
+-- IMPLEMENTATION: body of Check_And_Kill in murasama_leak_killer.adb;
+--   each APPLICATION STEP comment there maps 1:1 to a theorem above.
+--
+-- CITATIONS:
+--   - Apple Developer Documentation: proc_pid_rusage
+--     https://developer.apple.com/documentation/libproc/1505956-proc_pidrusage
+--   - Apple Developer Documentation: proc_pidinfo (PROC_PIDTBSDINFO)
+--     https://developer.apple.com/documentation/libproc/1505969-proc_pidinfo
+--   - Apple Developer Documentation: proc_listpids
+--     https://developer.apple.com/documentation/libproc/1505977-proc_listpids
+--   - kill(2) manual page https://developer.apple.com/documentation/man/2/kill
+--   - getpwuid_r(3) https://developer.apple.com/documentation/man/3/getpwuid_r
+--   - src/macos_utils.h (find_leak_candidates_c, get_user_info_c)
+--   - src/macos_bridge.ads (FFI bindings)
+--   - Ada 2012 Reference Manual RM 11.4.1 (exception handlers)
+--
+-- ============================================================================
+package Murasama_Leak_Killer is
+   pragma SPARK_Mode (Off);
+   -- SPARK_Mode Off rationale: Check_And_Kill performs pragma-Import(C)
+   -- calls into Objective-C Mach/libproc code (macos_utils.m), a libc
+   -- kill(2) call, and Text_IO logging side effects (Murasama_Log).
+   -- Foreign code, signals, and I/O are outside the SPARK proof domain -
+   -- same rationale and precedent as MacOS_Bridge, Murasama_Log, and
+   -- Murasama_Footprint.
+
+   -- Candidate buffers: LEAK_MAX_CANDIDATES slots (Murasama_Types),
+   -- 1-based, Interfaces.C.int-indexed bridge array types.
+   subtype Leak_PID_Array is
+     MacOS_Bridge.PID_Array (1 .. Murasama_Types.LEAK_MAX_CANDIDATES);
+   subtype Leak_Bytes_Array is
+     MacOS_Bridge.UINT64_Array (1 .. Murasama_Types.LEAK_MAX_CANDIDATES);
+   subtype Leak_Age_Array is
+     MacOS_Bridge.INT64_Array (1 .. Murasama_Types.LEAK_MAX_CANDIDATES);
+
+   -- ==========================================================================
+   -- PROCEDURE: Check_And_Kill
+   -- ==========================================================================
+   --
+    -- PURPOSE: One leak-reaper cycle: scan for candidates matching the
+    --   configured criteria, apply the *_* / USER-PRIORITY (/Users/)
+    --   exemptions, then either log the decision (dry-run, gate False) or
+    --   send SIGKILL (LEAK_KILL_ENABLED = True), with a per-cycle kill
+    --   cap.
+   --
+   -- PARAMETERS: none - all policy inputs are Murasama_Types constants
+   --   (single source of truth 🟡22): LEAK_MIN_FOOTPRINT_BYTES,
+   --   LEAK_MIN_AGE_SECONDS, LEAK_MAX_CANDIDATES, LEAK_MAX_KILLS_PER_CYCLE,
+   --   LEAK_KILL_ENABLED.
+   --
+   -- NORMAL OUTPUT: log lines only. Per candidate exactly one of:
+   --   [LEAK WOULD KILL] / [LEAK KILL] / exempt lines / skip+Warn;
+   --   plus one summary line per cycle (candidates, killed, capped).
+   -- ERROR OUTPUT: Murasama_Log.Error/Warn lines - never an exception
+   --   (THEOREM 2); scan errors surface as "0 candidates" (AXIOM 1).
+   --
+   -- WHY INPUT/OUTPUT DIFFER: input is elapsed wall-clock time since the
+   --   last cycle; output is decisions about specific pids. The difference
+   --   is the set of processes that crossed BOTH thresholds during the
+   --   interval - derived from AXIOM 1 (kernel-proven footprint+age),
+   --   never from anything cached or estimated.
+   --
+   -- TIMING ANALYSIS
+   -- ==========================================================================
+   -- TIMING ANCHOR: Nanosecond Resolution (1ns minimum)
+   -- Clock Source: Ada.Real_Time (backed by CLOCK_MONOTONIC) - anchor
+   --   applies to callers that bracket this call; this procedure itself
+   --   performs no clock reads (age comes from pbi_start_tvsec + time()
+   --   in C).
+   -- Estimated Processing Time: O(P + K) - P = system process count for
+   --   the scan (rusage for every pid, bsdinfo only for the footprint
+   --   survivors), K <= LEAK_MAX_CANDIDATES owner lookups, then
+   --   <= LEAK_MAX_KILLS_PER_CYCLE kill syscalls + log writes.
+   -- CPU Time: ~60ms typical (P ~ 500-2000 x ~2-10us per rusage syscall,
+   --   plus ~16 getpwuid_r lookups that hit cache)
+   -- WCET: 150ms with ~2.5x margin (launch storms, passwd/NSS latency on
+   --   owner lookups, log-path vnode contention)
+   -- Space Complexity: O(1) - three LEAK_MAX_CANDIDATES-slot stack arrays
+   --   (16*4 + 16*8 + 16*8 = 320 bytes) + one name buffer (MAX_NAME_LEN);
+   --   the C side mallocs the pid snapshot and candidate table and frees
+   --   them before returning (see alloc_pid_snapshot in macos_utils.m).
+   --
+   -- Derivation:
+   --   - proc_listpids snapshot: 1 sizing + 1 fill call (C)
+   --   - proc_pid_rusage per pid: P syscalls; most pids die at gate 1
+   --   - proc_pidinfo bsdinfo: only footprint survivors (typically <= 16)
+   --   - owner lookup: K <= 16 x (proc_pidinfo + getpwuid_r) ~ <1ms
+--   - user-home test: K <= 16 x Ada.Directories.Exists stat ~ <1ms
+   --   - kill: <= 4 x 1 syscall; logging: <= ~20 Text_IO lines
+   --   - Total ~ P syscalls dominates: 2000 x 10us = 20ms worst raw,
+   --     x 2.5 margin (NSS can block) => WCET 150ms
+   --
+   -- Hardware Assumptions:
+   --   - CPU: Apple silicon (arm64) or Intel Mac, single-sample syscall cost
+   --   - Kernel: XNU with proc_pid_rusage(RUSAGE_INFO_V4),
+   --     PROC_PIDTBSDINFO, kill(2)
+   --   - Permissions: root (AXIOM 5) - required both to read other users'
+   --     rusage and to SIGKILL them
+   -- ==========================================================================
+   procedure Check_And_Kill;
+   -- THEOREM 2 (never raises) is the caller contract: the main loop may
+   -- place this call directly before a "timestamp always advances" gate
+   -- without hot-loop risk on failure.
+
+end Murasama_Leak_Killer;

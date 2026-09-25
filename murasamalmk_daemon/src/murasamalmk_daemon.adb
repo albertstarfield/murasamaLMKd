@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Ada.Real_Time; use Ada.Real_Time;
 with Ada.Directories;
+with Ada.Exceptions;
 with Ada.Unchecked_Deallocation;
 with Interfaces.C; use Interfaces.C;
 with MacOS_Bridge; use MacOS_Bridge;
@@ -8,6 +9,7 @@ with Murasama_Log;  -- parameterless procs only: use-clause has no effect (-gnat
 with Murasama_Types; use Murasama_Types;
 with Murasama_Weights; use Murasama_Weights;
 with Murasama_Telemetry; use Murasama_Telemetry;
+with Murasama_Leak_Killer;  -- parameterless Check_And_Kill: full name call
 
 -- SPARK_Mode => Off: The main daemon procedure cannot be verified by SPARK because:
 --   1. Ada tasks (Async_Command_Runner, Decrement_Task, Thrashing_Task) with rendezvous
@@ -1167,6 +1169,8 @@ procedure Murasamalmk_Daemon is
    Last_Report_Time : Time := Clock;
    Last_Telemetry_Time : Time := Clock;
    Last_Front_Check_Time : Time := Clock;
+   Last_Mem_Monitor_Time : Time := Clock;
+   Last_Leak_Check_Time : Time := Clock;
 
    Last_Wired_MB : Long_Float;
 
@@ -1331,6 +1335,137 @@ begin
             exception
                when others => null;
             end;
+         end if;
+
+         -- ---- 10s Memory Monitor (Activity Monitor methodology) ----
+         -- Logs every MEM_MONITOR_INTERVAL_MS: XNU pressure level, free/
+         -- wired/compressor MB, swap used/total, and top
+         -- MEM_MONITOR_TOP_N processes by phys_footprint.
+         --
+         -- AXIOMS:
+         --   A1: Responsiveness derives from XNU pressure level
+         --       (kern.memorystatus_vm_pressure_level), NOT raw free-%:
+         --       page cache is reclaimable, so free-% legitimately reads
+         --       ~57% while the machine is simultaneously swap-starved.
+         --       (from: XNU jetsam/memorystatus design; observed on-host)
+         --   A2: Swap fullness = sysctl vm.swapusage (xsw_usage), same
+         --       source as Activity Monitor's "Swap Used" line.
+         --   A3: Top consumers ranked by ri_phys_footprint (resident +
+         --       compressed + internal), the exact quantity Activity
+         --       Monitor's Memory column shows — NOT RSS. Verified:
+         --       Lulu PID 689 = 1540 MB footprint vs 71 MB RSS.
+         --   A4: Current_Pressure/Free/Wired were sampled this iteration
+         --       (100ms ago max) — freshness bound, no extra sysctl.
+         --
+         -- THEOREMS:
+         --   T1: Read-only cycle — never calls mitigation/kill paths.
+         --   T2: Any FFI failure is caught, logged with full exception
+         --       details, and Last_Mem_Monitor_Time still advances, so a
+         --       broken metric degrades to log spam at 10s, never a
+         --       hot-loop inside the 100ms main poll.
+         --
+         -- CITATIONS:
+         --   [1] XNU osfmk/kern/memorystatus.c — pressure levels 1/2/4
+         --   [2] Apple man sysctl(3) — vm.swapusage
+         --   [3] Apple proc_pid_rusage(3) — ri_phys_footprint
+         if Now >= Last_Mem_Monitor_Time + Milliseconds (MEM_MONITOR_INTERVAL_MS) then
+            declare
+               Swap_Total_MB : double := 0.0;
+               Swap_Used_MB  : double := 0.0;
+               Compressor_MB : double := 0.0;
+               Swap_Pct      : Long_Float := 0.0;
+               FP_Pids   : PID_Array (int (1) .. int (MEM_MONITOR_TOP_N)) := (others => 0);
+               FP_Bytes  : UINT64_Array (int (1) .. int (MEM_MONITOR_TOP_N)) := (others => 0);
+               FP_Count  : int;
+               Name_C    : char_array (size_t (1) .. size_t (MAX_NAME_LEN));
+               P_Name    : String (1 .. MAX_NAME_LEN);
+               N_Len     : Integer;
+               FP_MB     : Long_Float;
+            begin
+               -- APPLICATION STEP 1: swap + compressor (A2, A1)
+               Get_Swap_Usage_C (Swap_Total_MB, Swap_Used_MB);
+               Compressor_MB := Get_Compressor_MB_C (Page_Size);
+               if Swap_Total_MB > 0.0 then
+                  Swap_Pct := (Long_Float (Swap_Used_MB) / Long_Float (Swap_Total_MB)) * 100.0;
+               else
+                  -- A2 failure signal: total=0.0 means sysctl failed (a
+                  -- machine with swap configured always reports >0), so
+                  -- print an explicit warning instead of a fake 0%.
+                  Murasama_Log.Warn ("[MEM MONITOR] vm.swapusage unavailable " &
+                    "(sysctl failed or swap disabled) -- totals reported as 0");
+               end if;
+
+               -- APPLICATION STEP 2: headline line (A4: reuse loop samples)
+               Murasama_Log.Info
+                 ("[MEM MONITOR] Pressure:" & Integer'Image (Current_Pressure) &
+                  " | Free:" & Long_Float'Image (Current_Free_MB) & " MB" &
+                  " | Wired:" & Long_Float'Image (Current_Wired_MB) & " MB" &
+                  " | Compressor:" & Long_Float'Image (Long_Float (Compressor_MB)) & " MB" &
+                  " | Swap:" & Long_Float'Image (Long_Float (Swap_Used_MB)) & "/" &
+                  Long_Float'Image (Long_Float (Swap_Total_MB)) & " MB (" &
+                  Long_Float'Image (Swap_Pct) & "%)");
+
+               -- APPLICATION STEP 3: top-N by phys_footprint (A3, T1)
+               FP_Count := Get_Top_Processes_By_Footprint_C
+                 (FP_Pids, FP_Bytes, int (MEM_MONITOR_TOP_N), int (0));
+               if FP_Count > 0 then
+                  for I in 1 .. Integer (FP_Count) loop
+                     Name_C := (others => ' ');
+                     Get_Process_Name_C (FP_Pids (int (I)), Name_C, int (MAX_NAME_LEN));
+                     -- Bounds-safe name trim: stop at NUL, at buffer end,
+                     -- or at P_Name capacity (Murphy: no NUL guarantee).
+                     N_Len := 0;
+                     for J in Name_C'Range loop
+                        exit when Name_C (J) = char'Val (0);
+                        exit when N_Len >= MAX_NAME_LEN;
+                        N_Len := N_Len + 1;
+                        P_Name (N_Len) := To_Ada (Name_C (J));
+                     end loop;
+                     if N_Len = 0 then
+                        P_Name (1 .. 9) := "<unknown>";
+                        N_Len := 9;
+                     end if;
+                     FP_MB := Long_Float (FP_Bytes (int (I))) / (1024.0 * 1024.0);
+                     Murasama_Log.Info
+                       ("[MEM MONITOR]   #" & Integer'Image (I) &
+                        " pid" & PID_T'Image (FP_Pids (int (I))) &
+                        " " & P_Name (1 .. N_Len) &
+                        " footprint:" & Long_Float'Image (FP_MB) & " MB");
+                  end loop;
+               else
+                  Murasama_Log.Warn ("[MEM MONITOR] footprint query returned " &
+                    "0 processes -- check proc_pid_rusage permissions/root");
+               end if;
+            exception
+               when E : others =>
+                  -- T2: log full details, never propagate into main loop
+                  Murasama_Log.Error ("[MEM MONITOR] cycle failed: " &
+                    Ada.Exceptions.Exception_Information (E));
+            end;
+            -- T2: always advance, even after failure (no hot-loop)
+            Last_Mem_Monitor_Time := Now;
+         end if;
+
+         -- Leak reaper (Murasama_Leak_Killer): every LEAK_CHECK_INTERVAL_MS
+         -- (10 min) scan for processes matching ALL configured criteria —
+         -- phys_footprint > 1 GB, age > 12 h, username without '_', owner
+         -- home NOT under /Users/ (user priority), not self (C getpid) —
+         -- then dry-run log (gate False) or SIGKILL (gate True, Phase 2).
+         -- T2 structure mirrors the MEM MONITOR block above: the callee
+         -- itself never raises (its THEOREM 2), the wiring handler is
+         -- belt+braces, and the timestamp ALWAYS advances after the block.
+         if Now >= Last_Leak_Check_Time +
+             Milliseconds (LEAK_CHECK_INTERVAL_MS) then
+            begin
+               Murasama_Leak_Killer.Check_And_Kill;
+            exception
+               when E : others =>
+                  -- T2: log full details, never propagate into main loop
+                  Murasama_Log.Error ("[LEAK CHECK] cycle failed: " &
+                    Ada.Exceptions.Exception_Information (E));
+            end;
+            -- T2: always advance, even after failure (no hot-loop)
+            Last_Leak_Check_Time := Now;
          end if;
 
          -- Decision Tree for Bloodshed

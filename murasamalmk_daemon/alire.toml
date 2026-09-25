@@ -12,3 +12,10 @@ executables = ["murasamalmk_daemon"]
 
 [[depends-on]]
 gnatprove = "^15.1.0"
+
+# gprbuild cannot compile Objective-C (.m has no language mapping), yet the
+# gpr's Linker package needs obj/<profile>/macos_utils.o. This pre-build hook
+# compiles it with clang before every gprbuild, so clean checkouts link too.
+[[actions]]
+type = "pre-build"
+command = ["sh", "scripts/build_macos_utils.sh"]

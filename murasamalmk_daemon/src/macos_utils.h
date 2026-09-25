@@ -10,6 +10,8 @@ uid_t get_console_uid_c(void);
 int get_memory_pressure_level_c(void);
 double get_free_mb_c(uint64_t page_size);
 double get_wired_mb_c(uint64_t page_size);
+double get_compressor_mb_c(uint64_t page_size);
+void get_swap_usage_c(double *out_total_mb, double *out_used_mb);
 uint64_t get_process_memory_c(int pid);
 
 // AppKit & Window Management
@@ -32,6 +34,36 @@ void get_memory_snapshot_c(uint64_t *out_faults, uint64_t *out_pageins, uint64_t
 
 // Top Processes Query
 int get_top_processes_by_memory_c(int *out_pids, uint64_t *out_resident_bytes, int n, int exclude_pid);
+
+// Top Processes by phys_footprint (Activity Monitor "Memory" column methodology:
+// proc_pid_rusage -> ri_phys_footprint, includes compressed + internal memory,
+// NOT plain RSS from proc_taskinfo)
+int get_top_processes_by_footprint_c(int *out_pids, uint64_t *out_footprint_bytes, int n, int exclude_pid);
+
+// Leak candidate scan: keep pids whose ri_phys_footprint STRICTLY exceeds
+// min_footprint_bytes AND whose wall-clock age (now - pbi_start_tvsec)
+// STRICTLY exceeds min_age_seconds; sorted largest-footprint-first.
+// Excludes pid < 200 (kernel/service range) and self (getpid) so the daemon
+// can never target itself. Returns number of candidates written (<= n).
+// Returns 0 on ANY error (invalid args, malloc failure, proc_listpids
+// failure) — caller must treat 0 as "nothing to kill", errors are logged
+// verbosely to stderr with the [MACOS_UTILS ERROR] prefix.
+// Citations: proc_listpids https://developer.apple.com/documentation/libproc/1505977-proc_listpids
+//            proc_pid_rusage https://developer.apple.com/documentation/libproc/1505956-proc_pidrusage
+//            proc_pidinfo(PROC_PIDTBSDINFO) https://developer.apple.com/documentation/libproc/1505969-proc_pidinfo
+int find_leak_candidates_c(int64_t min_footprint_bytes, int64_t min_age_seconds,
+                           int *out_pids, uint64_t *out_footprint_bytes,
+                           int64_t *out_age_seconds, int n);
+
+// Owner lookup for one pid: proc_pidinfo(PROC_PIDTBSDINFO) -> pbi_uid, then
+// getpwuid_r -> username copied into out_username (NUL-terminated, truncated
+// to username_len - 1 if needed). Returns 0 on success; -1 on ANY failure
+// (pid exited, pbi fetch failed, uid has no passwd entry) with a verbose
+// [MACOS_UTILS ERROR] line on stderr. Callers must treat -1 as "owner is
+// unknown — do NOT kill" (policy lives in Ada: missing data => no kill).
+// Citations: proc_pidinfo https://developer.apple.com/documentation/libproc/1505969-proc_pidinfo
+//            getpwuid_r https://developer.apple.com/documentation/man/3/getpwuid_r
+int get_user_info_c(int pid, uid_t *out_uid, char *out_username, int username_len);
 
 // Listing PIDs and Bulk Retrieval
 int list_pids_c(int *out_pids, int max_count);
