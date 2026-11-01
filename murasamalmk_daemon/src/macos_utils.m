@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <libgen.h>
 #include <sys/mman.h>
 #include <errno.h>
@@ -199,8 +200,33 @@ static const char *path_basename_of(const char *path) {
     return slash ? slash + 1 : path;
 }
 
+// Case-insensitive substring test. Used for the owner-mandated guard:
+// any process whose executable path contains "hermes", "syncthing" or
+// "omlx" in ANY case is never a kill candidate.
+static int path_contains_ci(const char *hay, const char *needle) {
+    if (!hay || !needle || !*needle) return 0;
+    const size_t n = strlen(needle);
+    for (const char *p = hay; *p; ++p) {
+        size_t i = 0;
+        while (i < n && p[i] &&
+               tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i])) {
+            ++i;
+        }
+        if (i == n) return 1;
+    }
+    return 0;
+}
+
 int is_system_process_c(const char *path) {
     if (!path) return 1;
+
+    // Owner mandate (2026-11-02): protect every process whose executable
+    // path contains "hermes", "syncthing" or "omlx", case-insensitively.
+    // Substring (not basename) so helpers under a matching directory are
+    // covered too.
+    if (path_contains_ci(path, "hermes") ||
+        path_contains_ci(path, "syncthing") ||
+        path_contains_ci(path, "omlx")) return 1;
 
     const char *force_tame[] = {
         "ReportCrash", "warp-dex", "contactsd", "AddressBookManager",
@@ -232,7 +258,7 @@ int is_system_process_c(const char *path) {
         "FSUSBDriverIsolationBridge", "launchservicesd", "watchdogd", "rclone", "ffmpeg",
         "entrypoint.sh", "Terminal.app", "Terminal", "WhatsApp", "iTerm2", "iTerm", "iterm", "airportd",
         "oMLX", "omlx-server", "com.apple.Virtualization.VirtualMachine", "qemu-system-aarch64",
-        "adelaide_server", "adelaide_watchdog"
+        "adelaide_server", "adelaide_watchdog", "syncthing"
     };
     for (int i = 0; i < 38; i++) {
         if (strcmp(path_basename_of(path), excluded[i]) == 0) return 1;
@@ -394,6 +420,10 @@ int get_top_processes_by_memory_c(int *out_pids, uint64_t *out_resident_bytes, i
                         blacklisted = 1;
                         break;
                     }
+                }
+                // Path-based exclusion: any process under an omlx/oMLX directory.
+                if (!blacklisted && (strstr(pathbuf, "omlx") || strstr(pathbuf, "oMLX") || strstr(pathbuf, "OMLX"))) {
+                    blacklisted = 1;
                 }
                 if (blacklisted) continue;
 
@@ -808,14 +838,18 @@ void restore_blacklisted_priorities_c(void) {
         char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
         if (proc_pidpath(pid, pathbuf, sizeof(pathbuf)) > 0) {
             char *bname = basename(pathbuf);
+            int matched = 0;
             for (int b = 0; b < 4; b++) {
-                if (strcmp(bname, restore_list[b]) == 0) {
-                    char taskpolicy_cmd[64];
-                    snprintf(taskpolicy_cmd, sizeof(taskpolicy_cmd),
-                        "taskpolicy -p %d -B", pid);
-                    system(taskpolicy_cmd);
-                    break;
-                }
+                if (strcmp(bname, restore_list[b]) == 0) { matched = 1; break; }
+            }
+            if (!matched && (strstr(pathbuf, "omlx") || strstr(pathbuf, "oMLX") || strstr(pathbuf, "OMLX"))) {
+                matched = 1;
+            }
+            if (matched) {
+                char taskpolicy_cmd[64];
+                snprintf(taskpolicy_cmd, sizeof(taskpolicy_cmd),
+                    "taskpolicy -p %d -B", pid);
+                system(taskpolicy_cmd);
             }
         }
     }
@@ -848,14 +882,18 @@ void deprioritize_blacklisted_c(void) {
         char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
         if (proc_pidpath(pid, pathbuf, sizeof(pathbuf)) > 0) {
             char *bname = basename(pathbuf);
+            int matched = 0;
             for (int b = 0; b < 4; b++) {
-                if (strcmp(bname, blacklist[b]) == 0) {
-                    char taskpolicy_cmd[64];
-                    snprintf(taskpolicy_cmd, sizeof(taskpolicy_cmd),
-                        "taskpolicy -p %d -b", pid);
-                    system(taskpolicy_cmd);
-                    break;
-                }
+                if (strcmp(bname, blacklist[b]) == 0) { matched = 1; break; }
+            }
+            if (!matched && (strstr(pathbuf, "omlx") || strstr(pathbuf, "oMLX") || strstr(pathbuf, "OMLX"))) {
+                matched = 1;
+            }
+            if (matched) {
+                char taskpolicy_cmd[64];
+                snprintf(taskpolicy_cmd, sizeof(taskpolicy_cmd),
+                    "taskpolicy -p %d -b", pid);
+                system(taskpolicy_cmd);
             }
         }
     }

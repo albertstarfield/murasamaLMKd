@@ -10,6 +10,7 @@ with Murasama_Types; use Murasama_Types;
 with Murasama_Weights; use Murasama_Weights;
 with Murasama_Telemetry; use Murasama_Telemetry;
 with Murasama_Leak_Killer;  -- parameterless Check_And_Kill: full name call
+with Murasama_Guard;
 
 -- SPARK_Mode => Off: The main daemon procedure cannot be verified by SPARK because:
 --   1. Ada tasks (Async_Command_Runner, Decrement_Task, Thrashing_Task) with rendezvous
@@ -767,7 +768,10 @@ procedure Murasamalmk_Daemon is
                            begin
                               Get_Process_Path_C (T_PID, T_Path, int(1024));
 
-                              if Is_System_Process_C (T_Path) /= 0 then
+                              if Is_System_Process_C (T_Path) /= 0
+                                or else Murasama_Guard.Is_Protected_Path
+                                  (To_Ada (T_Path, Trim_Nul => True))
+                              then
                                  Ada.Text_IO.Put_Line ("[SKIP] PID " & PID_T'Image (T_PID) & " (" &
                                    T_Name & ") is a protected system process. Skipping.");
                                  Skipped_Count := Skipped_Count + 1;
