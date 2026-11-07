@@ -20,11 +20,11 @@ package body Murasama_Types is
       return Free_MB < CRITICAL_FREE_MB;
    end Is_Free_Memory_Critical;
 
-   function Is_Velocity_Panic (Velocity_MB_S : Long_Float) return Boolean is
+   function Is_Velocity_Panic (Velocity_MB_S : Long_Float; Threshold_MB_S : Long_Float) return Boolean is
    begin
-      -- PROVED: Floating-point comparison with constant. No special values
-      -- can cause undefined behavior.
-      return Velocity_MB_S > PANIC_VELOCITY_MB_S;
+      -- PROVED: Floating-point comparison with caller-supplied threshold.
+      -- No special values can cause undefined behavior.
+      return Velocity_MB_S > Threshold_MB_S;
    end Is_Velocity_Panic;
 
    function Is_Weight_Priority (Weight : Natural) return Boolean is

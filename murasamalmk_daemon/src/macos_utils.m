@@ -11,6 +11,9 @@
 #include <sys/stat.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -271,10 +274,12 @@ int is_gamepolicyctl_available_c(void) {
     return access("/Applications/Xcode.app/Contents/Developer/usr/bin/gamepolicyctl", X_OK) == 0;
 }
 
+static int run_system_command_with_timeout(const char *cmd, int timeout_ms);
+
 void set_game_mode_c(const char *state) {
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "/Applications/Xcode.app/Contents/Developer/usr/bin/gamepolicyctl game-mode set %s >/dev/null 2>&1", state);
-    system(cmd);
+    run_system_command_with_timeout(cmd, 2000);
 }
 
 int get_parent_pid_c(int pid) {
@@ -806,10 +811,42 @@ int list_pids_c(int *out_pids, int max_count) {
     return count;
 }
 
-void run_system_command_c(const char *cmd) {
-    if (cmd) {
-        system(cmd);
+/* Bounded system() replacement: fork/exec /bin/sh -c cmd with a hard
+   timeout (ms). Kills the child on timeout so a hung helper cannot block
+   the daemon. Returns 0 on success, -1 on timeout/failure. */
+static int run_system_command_with_timeout(const char *cmd, int timeout_ms) {
+    if (!cmd) return -1;
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        /* child */
+        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        _exit(127);
     }
+    int waited = 0;
+    int status = 0;
+    while (waited < timeout_ms) {
+        pid_t r = waitpid(pid, &status, WNOHANG);
+        if (r == pid) {
+            return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+        }
+        if (r < 0) return -1;
+        usleep(10000); /* 10 ms */
+        waited += 10;
+    }
+    /* timeout: kill */
+    kill(pid, SIGKILL);
+    waitpid(pid, &status, 0);
+    return -1;
+}
+
+int atomic_rename_c(const char *old_path, const char *new_path) {
+    if (rename(old_path, new_path) == 0) return 0;
+    return errno;
+}
+
+void run_system_command_c(const char *cmd) {
+    run_system_command_with_timeout(cmd, 2000);
 }
 
 void restore_blacklisted_priorities_c(void) {
@@ -949,4 +986,22 @@ void install_shutdown_handlers_c(void) {
 
 int shutdown_requested_c(void) {
     return g_shutdown_requested ? 1 : 0;
+}
+
+// Total physical RAM in MB via sysctl hw.memsize (dynamic detection).
+// Returns 0.0 on any failure; callers must fall back to a sane default.
+// Citations: sysctl hw.memsize https://developer.apple.com/documentation/kernel/1387446-sysctlbyname
+double get_total_ram_mb_c(void) {
+    uint64_t memsize = 0;
+    size_t size = sizeof(memsize);
+    if (sysctlbyname("hw.memsize", &memsize, &size, NULL, 0) == 0 && memsize > 0) {
+        return (double)memsize / (1024.0 * 1024.0);
+    }
+    // Fallback: host_statistics64 max_mem (bytes).
+    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+    vm_statistics64_data_t vm_stat;
+    if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm_stat, &count) == KERN_SUCCESS) {
+        // vm_stat does not carry total; use sysctl fallback value 0 signals failure.
+    }
+    return 0.0;
 }

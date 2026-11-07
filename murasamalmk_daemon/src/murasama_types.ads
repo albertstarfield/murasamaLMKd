@@ -51,10 +51,10 @@ package Murasama_Types is
    -- Safety valve: at most this many SIGKILLs per scan cycle — a wrong
    -- policy or pathological system can never wipe the process table in
    -- one pass; remaining candidates are re-evaluated next cycle.
-   LEAK_MAX_KILLS_PER_CYCLE    : constant := 4;
+   LEAK_MAX_KILLS_PER_CYCLE    : constant := 2;
    -- Scan buffer: max candidates fetched per cycle (largest-first; any
    -- matches beyond the buffer wait for later cycles after the cap).
-   LEAK_MAX_CANDIDATES         : constant := 16;
+   LEAK_MAX_CANDIDATES         : constant := 8;
     -- Phase gate: False = DRY-RUN ("[LEAK WOULD KILL]" log lines only),
     -- True = actually SIGKILL. Constant (not variable) because flipping it
     -- requires a rebuild + daemon restart either way; flip ONLY after
@@ -65,7 +65,6 @@ package Murasama_Types is
     -- old uid-0 rule; _windowserver 1723 exempt via *_*).
     LEAK_KILL_ENABLED           : constant Boolean := True;
    CRITICAL_FREE_MB            : constant := 128.0;
-   PANIC_VELOCITY_MB_S         : constant := 21000.0;
    MIN_PRESSURE_LEVEL_TO_KILL  : constant := 4;
    GRADIENT_MEASURE_MS         : constant := 100;
    TOP_N_PROCESSES             : constant := 3;
@@ -119,10 +118,12 @@ package Murasama_Types is
      with Post => (Is_Free_Memory_Critical'Result = (Free_MB < CRITICAL_FREE_MB));
 
    -- Purpose: Determine if wired memory velocity indicates a violent allocation spike.
-   -- Contract: Returns True iff Velocity > PANIC_VELOCITY_MB_S (21000 MB/s).
+   -- Contract: Returns True iff Velocity > Threshold_MB_S (MB/s). Threshold is
+   --   derived at runtime from the machine's total RAM (dynamic detection),
+   --   not a compile-time constant (see murasamalmk_daemon.adb).
    -- Proved by: Proof that the threshold comparison is correct.
-   function Is_Velocity_Panic (Velocity_MB_S : Long_Float) return Boolean
-     with Post => (Is_Velocity_Panic'Result = (Velocity_MB_S > PANIC_VELOCITY_MB_S));
+   function Is_Velocity_Panic (Velocity_MB_S : Long_Float; Threshold_MB_S : Long_Float) return Boolean
+     with Post => (Is_Velocity_Panic'Result = (Velocity_MB_S > Threshold_MB_S));
 
    -- Purpose: Determine if a process weight exceeds the priority kill threshold.
    -- Contract: Returns True iff Weight > WEIGHT_PRIORITY_THRESHOLD (3).

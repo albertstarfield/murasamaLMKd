@@ -1,9 +1,9 @@
 #!/bin/bash
 
-
-#disabled for now
-#sleep 9999
+# Disable? Uncomment this
+#sleep 99999
 #exit
+
 
 
 # Murasama LMKd - Daemon Launch Script
@@ -32,7 +32,6 @@ if [ ! -f "${BIN_PATH}" ] || [ -n "${STALE_SRC}" ]; then
   # Compile Objective-C bridge (stderr NOT silenced: build failures must surface)
   mkdir -p obj/development
   /usr/bin/clang -g -O2 -x objective-c -c src/macos_utils.m -o obj/development/macos_utils.o \
-    -framework AppKit -framework Foundation -framework CoreGraphics -lproc \
     -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 
   # Compile Ada/SPARK daemon

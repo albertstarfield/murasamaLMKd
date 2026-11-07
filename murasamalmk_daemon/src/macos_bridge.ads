@@ -122,6 +122,9 @@ package MacOS_Bridge is
    procedure Run_System_Command_C (Cmd : char_array);
    pragma Import (C, Run_System_Command_C, "run_system_command_c");
 
+   function Atomic_Rename_C (Old_Path : char_array; New_Path : char_array) return int;
+   pragma Import (C, Atomic_Rename_C, "atomic_rename_c");
+
    procedure Restore_Blacklisted_Priorities_C;
    pragma Import (C, Restore_Blacklisted_Priorities_C, "restore_blacklisted_priorities_c");
 
@@ -141,5 +144,9 @@ package MacOS_Bridge is
    -- Poll shutdown flag: returns 1 when SIGTERM/SIGINT was received.
    function Shutdown_Requested_C return int;
    pragma Import (C, Shutdown_Requested_C, "shutdown_requested_c");
+
+   -- Total physical RAM in MB (dynamic detection). Returns 0.0 on failure.
+   function Get_Total_RAM_MB_C return double;
+   pragma Import (C, Get_Total_RAM_MB_C, "get_total_ram_mb_c");
 
 end MacOS_Bridge;

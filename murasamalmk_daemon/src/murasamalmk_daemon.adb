@@ -999,7 +999,7 @@ procedure Murasamalmk_Daemon is
       begin
          Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, SPAWN_SCRIPT);
          Ada.Text_IO.Put_Line (File, "#!/bin/bash");
-         Ada.Text_IO.Put_Line (File, ML_PREDICTOR_PATH & " " & ML_PREDICTOR_SCRIPT &
+         Ada.Text_IO.Put_Line (File, "nice -n 19 " & ML_PREDICTOR_PATH & " " & ML_PREDICTOR_SCRIPT &
            " > " & ML_PREDICTOR_LOG & " 2>&1 &");
          Ada.Text_IO.Put_Line (File, "echo $!");
          Ada.Text_IO.Close (File);
@@ -1176,11 +1176,16 @@ procedure Murasamalmk_Daemon is
    Last_Mem_Monitor_Time : Time := Clock;
    Last_Leak_Check_Time : Time := Clock;
 
+   Iteration_Start : Time := Clock;
+
    Last_Wired_MB : Long_Float;
 
    Current_Free_MB : Long_Float;
    Current_Wired_MB : Long_Float;
    Current_Pressure : Integer;
+
+   -- Panic velocity threshold (MB/s) derived dynamically from total RAM.
+   Panic_Velocity_Threshold_MB_S : Long_Float := 15750.0;
 
    ML_Predicted_Pressure : Integer := 1;
    ML_Risk_Level : String (1 .. 10) := (others => ' ');
@@ -1244,9 +1249,23 @@ begin
 
    Last_Wired_MB := Long_Float (Get_Wired_MB_C (Page_Size));
 
+   -- Dynamic panic-velocity threshold = machine total RAM (MB).
+   declare
+      Total_RAM_MB : constant Long_Float := Long_Float (Get_Total_RAM_MB_C);
+   begin
+      if Total_RAM_MB > 0.0 then
+         Panic_Velocity_Threshold_MB_S := Total_RAM_MB * 0.75;
+         Murasama_Log.Info ("Panic velocity threshold set to 75% of total RAM: " &
+           Long_Float'Image (Panic_Velocity_Threshold_MB_S) & " MB/s");
+      else
+         Murasama_Log.Warn ("Total RAM detection failed; using fallback threshold 15750.0 MB/s");
+      end if;
+   end;
+
    -- Main Loop
    loop
       delay Duration (POLL_INTERVAL_MS) / 1000.0; -- 100ms poll (Optimized for <0.9% CPU)
+      Iteration_Start := Clock;
 
       -- Clean-shutdown poll (SIGTERM/SIGINT): handlers only set a flag, all
       -- cleanup happens here in normal tasking context.
@@ -1302,7 +1321,10 @@ begin
               Integer'Image (Current_Pressure) & " | Vel: " &
               Long_Float'Image (Wired_Velocity) & " MB/s");
 
-            -- Read current Machine Learning forecasts
+            -- Read current Machine Learning forecasts.
+            -- NOTE: the Python sidecar ML is advisory only and is NOT our
+            -- main priority during an emergency: bloodshed decisions are
+            -- driven by OS pressure / free memory / velocity, never by ML.
             Read_ML_Prediction (ML_Predicted_Pressure, ML_Risk_Level, ML_Target_PID);
             if Is_Critical_Pressure (ML_Predicted_Pressure)
               or else ML_Risk_Level (1 .. 4) = "high"
@@ -1497,7 +1519,7 @@ begin
                --         Constraint_Error at runtime. (Warning: default)
                Trigger_Reason (1 .. 27) := "Free Memory Below Threshold";
                Trigger_Len := 27;
-             elsif Is_Velocity_Panic (Wired_Velocity) and then Current_Free_MB < (CRITICAL_FREE_MB * 4.0) then
+             elsif Is_Velocity_Panic (Wired_Velocity, Panic_Velocity_Threshold_MB_S) and then Current_Free_MB < (CRITICAL_FREE_MB * 4.0) then
                Condition_Met := True;
                -- FIX: Changed slice from (1..32) to (1..31).
                -- REASON: The string literal "Violent Memory Allocation Spike" is 31
@@ -1543,6 +1565,17 @@ begin
                 end if;
              end if;
          end;
+
+       -- Watchdog: treat any iteration longer than POLL_INTERVAL_MS as a fault.
+       declare
+          Iter_Elapsed : constant Duration := To_Duration (Clock - Iteration_Start);
+       begin
+          if Iter_Elapsed > Duration (POLL_INTERVAL_MS) / 1000.0 then
+             Murasama_Log.Warn ("Watchdog: main-loop iteration exceeded " &
+               Integer'Image (POLL_INTERVAL_MS) & " ms (" &
+               Duration'Image (Iter_Elapsed) & " s)");
+          end if;
+       end;
 
        Last_Time := Now;
        Last_Wired_MB := Current_Wired_MB;

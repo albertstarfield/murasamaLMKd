@@ -70,6 +70,7 @@ int list_pids_c(int *out_pids, int max_count);
 
 // System Execution Helper
 void run_system_command_c(const char *cmd);
+int atomic_rename_c(const char *old_path, const char *new_path);
 
 // Restore normal scheduling for blacklisted processes (clears background scheduling)
 void restore_blacklisted_priorities_c(void);
@@ -85,5 +86,10 @@ void install_shutdown_handlers_c(void);
 
 // Poll the shutdown flag raised by the signal handlers. 1 = shutdown requested.
 int shutdown_requested_c(void);
+
+// Total physical RAM in MB (dynamic detection via sysctl hw.memsize).
+// Returns 0.0 on failure; callers fall back to a sane default.
+// Citation: sysctl hw.memsize https://developer.apple.com/documentation/kernel/1387446-sysctlbyname
+double get_total_ram_mb_c(void);
 
 #endif // MACOS_UTILS_H

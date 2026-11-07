@@ -7,7 +7,7 @@ abstract project Murasamalmk_Daemon_Config is
 
    Alire_Host_Arch := "aarch64";
 
-   Alire_Host_Distro := "distribution_unknown";
+   Alire_Host_Distro := "homebrew";
    Ada_Compiler_Switches := External_As_List ("ADAFLAGS", " ");
    Ada_Compiler_Switches := Ada_Compiler_Switches &
           (

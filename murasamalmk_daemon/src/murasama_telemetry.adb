@@ -42,6 +42,8 @@ with Ada.Exceptions;
 with Ada.Calendar;
 with Ada.Calendar.Formatting;
 with Ada.Directories;
+with Interfaces.C; use Interfaces.C;
+with MacOS_Bridge; use MacOS_Bridge;
 with Murasama_Log;
 with Murasama_Types; use Murasama_Types;
 
@@ -199,7 +201,14 @@ package body Murasama_Telemetry is
          Ada.Text_IO.Close (Out_File);
 
          -- ATOMIC PUBLISH: POSIX rename(2) atomically replaces the destination.
-         Ada.Directories.Rename (Old_Name => Tmp_Path, New_Name => Path);
+         declare
+            RC : int;
+         begin
+            RC := Atomic_Rename_C (To_C (Tmp_Path), To_C (Path));
+            if RC /= 0 then
+               raise Program_Error with "atomic rename failed, errno=" & Integer'Image (Integer (RC));
+            end if;
+         end;
       exception
          when E : others =>
             -- VERBOSE FAILURE REPORTING (audit RED-6): never swallow silently.

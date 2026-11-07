@@ -129,6 +129,10 @@ def write_prediction(path: str, predicted_pressure: int, risk_level: str, target
         # above); anything else would be a bug and should crash loudly.
         print(f"[ML ERROR] Failed to write predictions: {e}")
 
+# NOTE: This ML sidecar is advisory only. It is NOT the main priority
+# during an emergency: the Ada daemon makes bloodshed decisions from OS
+# pressure / free memory / velocity, never from these predictions.
+
 def main() -> None:
     print("[ML SERVICE] Online Memory Spike Forecasting Daemon Active.")
     predictor: OnlineMemoryPredictor = OnlineMemoryPredictor()

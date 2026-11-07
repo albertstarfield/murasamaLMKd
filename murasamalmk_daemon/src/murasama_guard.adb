@@ -15,8 +15,8 @@ package body Murasama_Guard with SPARK_Mode is
    is
       --  Re-base both strings to 1 .. N so no index arithmetic can overflow
       --  and every index is provably inside the array bounds.
-      H : String (1 .. Hay'Length) := Hay;
-      N : String (1 .. Needle'Length) := Needle;
+      H : constant String (1 .. Hay'Length) := Hay;
+      N : constant String (1 .. Needle'Length) := Needle;
    begin
       if N'Length = 0 or else H'Length < N'Length then
          return False;
