@@ -9,6 +9,9 @@
 #include <libproc.h>
 #include <sys/sysctl.h>
 #include <sys/stat.h>
+#include <mach/mach.h>
+#include <mach/mach_host.h>
+#include <mach/host_info.h>
 #include <sys/resource.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -843,6 +846,21 @@ static int run_system_command_with_timeout(const char *cmd, int timeout_ms) {
 int atomic_rename_c(const char *old_path, const char *new_path) {
     if (rename(old_path, new_path) == 0) return 0;
     return errno;
+}
+
+int get_cpu_ticks_c(unsigned long long *out_user, unsigned long long *out_system,
+                    unsigned long long *out_idle, unsigned long long *out_nice) {
+    if (!out_user || !out_system || !out_idle || !out_nice) return -1;
+    host_cpu_load_info_data_t info;
+    mach_msg_type_number_t count = HOST_CPU_LOAD_INFO_COUNT;
+    kern_return_t kr = host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO,
+                                      (host_info_t)&info, &count);
+    if (kr != KERN_SUCCESS) return -1;
+    *out_user   = (unsigned long long)info.cpu_ticks[CPU_STATE_USER];
+    *out_system = (unsigned long long)info.cpu_ticks[CPU_STATE_SYSTEM];
+    *out_idle   = (unsigned long long)info.cpu_ticks[CPU_STATE_IDLE];
+    *out_nice   = (unsigned long long)info.cpu_ticks[CPU_STATE_NICE];
+    return 0;
 }
 
 void run_system_command_c(const char *cmd) {

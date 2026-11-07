@@ -71,6 +71,8 @@ int list_pids_c(int *out_pids, int max_count);
 // System Execution Helper
 void run_system_command_c(const char *cmd);
 int atomic_rename_c(const char *old_path, const char *new_path);
+int get_cpu_ticks_c(unsigned long long *out_user, unsigned long long *out_system,
+                    unsigned long long *out_idle, unsigned long long *out_nice);
 
 // Restore normal scheduling for blacklisted processes (clears background scheduling)
 void restore_blacklisted_priorities_c(void);

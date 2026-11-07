@@ -125,6 +125,10 @@ package MacOS_Bridge is
    function Atomic_Rename_C (Old_Path : char_array; New_Path : char_array) return int;
    pragma Import (C, Atomic_Rename_C, "atomic_rename_c");
 
+   function Get_CPU_Ticks_C (Out_User : out UINT64_T; Out_System : out UINT64_T;
+                            Out_Idle : out UINT64_T; Out_Nice : out UINT64_T) return int;
+   pragma Import (C, Get_CPU_Ticks_C, "get_cpu_ticks_c");
+
    procedure Restore_Blacklisted_Priorities_C;
    pragma Import (C, Restore_Blacklisted_Priorities_C, "restore_blacklisted_priorities_c");
 

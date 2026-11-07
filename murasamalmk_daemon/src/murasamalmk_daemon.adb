@@ -1175,6 +1175,13 @@ procedure Murasamalmk_Daemon is
    Last_Front_Check_Time : Time := Clock;
    Last_Mem_Monitor_Time : Time := Clock;
    Last_Leak_Check_Time : Time := Clock;
+   Last_CPU_Check_Time  : Time := Clock;
+
+   CPU_Baseline_Set : Boolean := False;
+   Prev_User_Ticks   : UINT64_T := 0;
+   Prev_System_Ticks : UINT64_T := 0;
+   Prev_Idle_Ticks   : UINT64_T := 0;
+   Prev_Nice_Ticks   : UINT64_T := 0;
 
    Iteration_Start : Time := Clock;
 
@@ -1289,6 +1296,50 @@ begin
             if Wired_Velocity < 0.0 then
                Wired_Velocity := 0.0;
             end if;
+         end if;
+
+         -- Lightweight CPU sampling (every 30s; no top(1) fork).
+         -- Heuristic: if idle < 50% AND sys/user tick ratio > 1.0, the
+         -- kernel is doing more work than userspace -> inefficiency, often
+         -- a symptom of paging/decompression/fault storms.
+         if Now >= Last_CPU_Check_Time + Seconds (30) then
+            declare
+               U, S, I, N : UINT64_T;
+               RC : int;
+            begin
+               RC := Get_CPU_Ticks_C (U, S, I, N);
+               if RC = 0 then
+                  if CPU_Baseline_Set then
+                     declare
+                        DU : constant Long_Float := Long_Float (U - Prev_User_Ticks);
+                        DS : constant Long_Float := Long_Float (S - Prev_System_Ticks);
+                        DI : constant Long_Float := Long_Float (I - Prev_Idle_Ticks);
+                        DN : constant Long_Float := Long_Float (N - Prev_Nice_Ticks);
+                        Total : constant Long_Float := DU + DS + DI + DN;
+                        Idle_Pct : Long_Float := 0.0;
+                        Ratio : Long_Float := 0.0;
+                     begin
+                        if Total > 0.0 then
+                           Idle_Pct := DI / Total * 100.0;
+                           if DU > 0.0 then
+                              Ratio := DS / DU;
+                           end if;
+                           if Idle_Pct < 50.0 and then Ratio > 1.0 then
+                              Murasama_Log.Warn ("CPU inefficiency: idle=" &
+                                Long_Float'Image (Idle_Pct) & "% sys/user ratio=" &
+                                Long_Float'Image (Ratio));
+                           end if;
+                        end if;
+                     end;
+                  end if;
+                  Prev_User_Ticks   := U;
+                  Prev_System_Ticks := S;
+                  Prev_Idle_Ticks   := I;
+                  Prev_Nice_Ticks   := N;
+                  CPU_Baseline_Set  := True;
+               end if;
+               Last_CPU_Check_Time := Now;
+            end;
          end if;
 
          -- Query frontmost app info (Throttled to 1s to avoid SkyLight IPC overhead)
