@@ -1178,6 +1178,7 @@ procedure Murasamalmk_Daemon is
    Last_CPU_Check_Time  : Time := Clock;
 
    CPU_Baseline_Set : Boolean := False;
+   CPU_Inefficiency_Active : Boolean := False;
    Prev_User_Ticks   : UINT64_T := 0;
    Prev_System_Ticks : UINT64_T := 0;
    Prev_Idle_Ticks   : UINT64_T := 0;
@@ -1328,6 +1329,9 @@ begin
                               Murasama_Log.Warn ("CPU inefficiency: idle=" &
                                 Long_Float'Image (Idle_Pct) & "% sys/user ratio=" &
                                 Long_Float'Image (Ratio));
+                              CPU_Inefficiency_Active := True;
+                           else
+                              CPU_Inefficiency_Active := False;
                            end if;
                         end if;
                      end;
@@ -1340,6 +1344,14 @@ begin
                end if;
                Last_CPU_Check_Time := Now;
             end;
+         end if;
+
+         -- Trigger mitigation on CPU inefficiency + memory pressure (AND gate).
+         if CPU_Inefficiency_Active and Current_Pressure >= 2
+            and not Mitigation_State.Is_Mitigating
+         then
+            Mitigation_State.Increment_Triggers (False, False, False);
+            Thrashing_Mitigation_In (Front_PID);
          end if;
 
          -- Query frontmost app info (Throttled to 1s to avoid SkyLight IPC overhead)
