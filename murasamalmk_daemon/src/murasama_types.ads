@@ -55,6 +55,57 @@ package Murasama_Types is
    -- Scan buffer: max candidates fetched per cycle (largest-first; any
    -- matches beyond the buffer wait for later cycles after the cap).
    LEAK_MAX_CANDIDATES         : constant := 8;
+   -- MDS FINAL CORRECTION (user 2026-11-09): mds_stores must operate at
+   -- 512 MiB, not 8 GB. Observed 2026-11-09 (footprint(1), pid 555,
+   -- owner _mds_stores, age 04-21:09:12): phys_footprint 8909 MB, of which
+   -- Malloc Small = 8794 MB (98.7%). Helpers at 8 MB, mds at 77 MB. The
+   -- earlier "768MB" figure was an underestimate; raw measured value used.
+   -- Owner requirement: this process must stay <= 512 MiB; action = the
+   -- same SIGKILL path as the generic 1GB/12h leak rule, but at 512 MiB.
+   -- Why this daemon on this target (first principles, not marketing):
+   --   * mds_stores is Apple's metadata indexer. It runs as _mds_stores
+   --     (underscore owner) with NO /Users/ home dir, so the generic *_*
+   --     exemption (below) would shield it forever — the generic 1GB/12h
+   --     rule as written can never reap it whatever its footprint.
+   --   * The exemption's rationale is: *_* accounts are kernel/serving
+   --     plumbing that must never be killed. mds_stores is NOT plumbing:
+   --     it is a rebuildable search-index cache. Killing it loses no data;
+   --     macOS respawns it and it re-indexes (slowly, once, self-limiting).
+   --     The user did not choose to run it (no volition), it does not
+   --     respawn user work, and under USER PRIORITY the process classes
+   --     that must never die are user processes — this is a vendor system
+   --     daemon precisely in scope ("targets are vendor/system daemons
+   --     running without user volition or authorization").
+   --   * 512 MiB is therefore the operating envelope for the process; the
+   --     reap is the "killed" signal when it leaves that envelope. The
+   --     generic 1 GiB threshold stays for everything else.
+   -- IMPLEMENTATION SHAPE (mirrors the generic rule exactly):
+   --   * MDS process name (exact basename, no substring): "mds_stores".
+   --     mds / mds_stores helpers (8 MB) stay below 512 MiB anyway, so
+   --     exact-name + footprint gate needs no special case for them.
+   --   * strict phys_footprint > 512 MiB (536870912 B = 512*1024*1024).
+   --   * wall-clock age > LEAK_MIN_AGE_SECONDS (12 h), same as generic —
+   --     a freshly-rebuilt index briefly past 512 MiB while re-indexing
+   --     after a reap is not a leak; only a long-lived, swollen index is.
+   --   * other exemptions unchanged: unknown owner => no kill; /Users/
+   --     home => no kill (user priority; USER PRIORITY applies to MDS
+   --     owners too — if a real user ever owned an indexer, it is kept).
+   --   * caps unchanged: LEAK_MAX_KILLS_PER_CYCLE per cycle, scanned
+   --     candidates LEAK_MAX_CANDIDATES per cycle, dry-run gate
+   --     LEAK_KILL_ENABLED unchanged.
+   -- DISABLE FLAG (same-directory idiom as 247's disable_* flags, e.g.
+   --   /usr/local/247AlwaysOnlineServe/disable_qos_warden_energy):
+   --   "/usr/local/murasamaLMKd/disable_leak_killer_mds_stores", checked
+   --   per cycle: if the file exists, the MDS special reap is off (the
+   --   generic *_* exemption applies, so mds_stores is never reaped by
+   --   this daemon); remove the file to re-enable. Flag semantics: pure
+   --   existence, contents ignored; fail-open (a stat failure means "no
+   --   exemption", i.e. the daemon still reaps — existence is the only
+   --   signal that can exempt, and it is re-read every cycle).
+   MDS_PROCESS_NAME            : constant String := "mds_stores";
+   MDS_MIN_FOOTPRINT_BYTES     : constant := 512 * 1024 * 1024;
+   MDS_DISABLE_FLAG_PATH       : constant String :=
+     "/usr/local/murasamaLMKd/disable_leak_killer_mds_stores";
     -- Phase gate: False = DRY-RUN ("[LEAK WOULD KILL]" log lines only),
     -- True = actually SIGKILL. Constant (not variable) because flipping it
     -- requires a rebuild + daemon restart either way; flip ONLY after
@@ -100,6 +151,38 @@ package Murasama_Types is
    end record;
 
    type Weights_Array is array (1 .. WEIGHTS_TABLE_SIZE) of Weight_Record;
+
+   -- ==================== LEAK KILLER: MDS PLUMBING (pure helpers) ====================
+   -- The MDS special reap's threshold/disable-flag logic, stated as pure
+   -- SPARK functions so gnatprove can check them AND so the Lean/Rocq proofs
+   -- (proofs/mds_leak.lean|v) mirror real Ada code, not a sketch.
+
+   -- Flag-file existence => MDS special reap is OFF. Checked every cycle
+   -- (Ada.Directories.Exists); anything short of "exists" (missing file,
+   -- bad permissions, ENOTDIR) reads as False = reap on.
+   function MDS_Special_Reap_Disabled (Flag_Exists : Boolean) return Boolean
+     with Post => (MDS_Special_Reap_Disabled'Result = Flag_Exists);
+
+   -- The MDS process-name test is an EXACT match: no substring, no prefix.
+   -- It is what keeps mds helpers (8 MB, below 512 MiB anyway) and binaries
+   -- merely containing "mds" from inheriting the lower threshold.
+   function Is_MDS_Indexer (Process_Name : String) return Boolean
+     with Post => (Is_MDS_Indexer'Result = (Process_Name = MDS_PROCESS_NAME));
+
+   -- Footprint gate for the MDS envelope: strict > 512 MiB.
+   function MDS_Crosses_512MiB (Phys_Footprint_Bytes : Long_Long_Integer) return Boolean
+     with Post => (MDS_Crosses_512MiB'Result =
+                   (Phys_Footprint_Bytes > Long_Long_Integer (MDS_MIN_FOOTPRINT_BYTES)));
+
+   -- The *_* exemption's MDS waiver, on published inputs (no I/O): the
+   -- exemption is waived iff this is an exact mds_stores process whose
+   -- reap is enabled. The checklist in Check_And_Kill offers the SAME
+   -- values (process name, flag stat, footprint, age) at the decision.
+   function MDS_Waives_Underscore_Exemption
+     (Process_Name : String; Flag_Exists : Boolean) return Boolean
+     with Post => (MDS_Waives_Underscore_Exemption'Result =
+                   (Is_MDS_Indexer (Process_Name)
+                    and then not MDS_Special_Reap_Disabled (Flag_Exists)));
 
    -- ==================== SPARK-VERIFIED PURE FUNCTIONS ====================
    -- These pure functions are verified by gnatprove --level=4 to have no

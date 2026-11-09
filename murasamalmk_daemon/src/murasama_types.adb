@@ -34,6 +34,35 @@ package body Murasama_Types is
       return Weight > WEIGHT_PRIORITY_THRESHOLD;
    end Is_Weight_Priority;
 
+   function MDS_Special_Reap_Disabled (Flag_Exists : Boolean) return Boolean is
+   begin
+      -- Existence is the only signal; the flag file's contents are
+      -- deliberately ignored (247 flag idiom: presence is the flag).
+      return Flag_Exists;
+   end MDS_Special_Reap_Disabled;
+
+   function Is_MDS_Indexer (Process_Name : String) return Boolean is
+   begin
+      -- Exact basename match. No Index, no prefix: a binary whose name
+      -- merely CONTAINS "mds" must not inherit the lower threshold.
+      return Process_Name = MDS_PROCESS_NAME;
+   end Is_MDS_Indexer;
+
+   function MDS_Crosses_512MiB
+     (Phys_Footprint_Bytes : Long_Long_Integer) return Boolean is
+   begin
+      -- Strict >: a process sitting exactly at 512 MiB has not LEFT the
+      -- envelope; the observed 8909 MiB hog is 17x above it.
+      return Phys_Footprint_Bytes > Long_Long_Integer (MDS_MIN_FOOTPRINT_BYTES);
+   end MDS_Crosses_512MiB;
+
+   function MDS_Waives_Underscore_Exemption
+     (Process_Name : String; Flag_Exists : Boolean) return Boolean is
+   begin
+      return Is_MDS_Indexer (Process_Name)
+        and then not MDS_Special_Reap_Disabled (Flag_Exists);
+   end MDS_Waives_Underscore_Exemption;
+
    function Clamp_Pressure_Level (Level : Integer) return Integer is
    begin
       -- PROVED: Integer'Min and Integer'Max are total functions that always

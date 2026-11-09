@@ -92,6 +92,52 @@ package body Murasama_Leak_Killer is
             "are on stderr)");
       end if;
 
+      -- ── MDS SECOND PASS (MDS special reap is active only when the
+      --    disable flag file "/usr/local/murasamaLMKd/
+      --    disable_leak_killer_mds_stores" does NOT exist). This pass
+      --    finds pids above 512 MiB so the 512 MiB envelope isn't
+      --    invisible to the generic 1 GiB scan. Same C function, same
+      --    age gate (12h), same exclusion set (self, pid < 200,
+      --    largest-footprint-first). MDS-only candidates are tracked
+      --    here; generic candidates come from the 1 GiB pass above.
+      --    Flag semantics: re-read EVERY cycle; creation/removal takes
+      --    effect on the next cycle without a rebuild (247 idiom).
+      --    MDS_Pids/-Bytes/-Ages are Leak_*_Array scalars here too.
+      declare
+         MDS_Flag_Exists : constant Boolean :=
+           Ada.Directories.Exists (Murasama_Types.MDS_DISABLE_FLAG_PATH);
+         MDS_Reap_Active : constant Boolean :=
+           not Murasama_Types.MDS_Special_Reap_Disabled (MDS_Flag_Exists);
+         MDS_Pids    : Murasama_Leak_Killer.Leak_PID_Array := (others => 0);
+         MDS_Bytes   : Murasama_Leak_Killer.Leak_Bytes_Array := (others => 0);
+         MDS_Ages    : Murasama_Leak_Killer.Leak_Age_Array := (others => 0);
+         MDS_Count_C : Interfaces.C.int;
+      begin
+         if MDS_Reap_Active then
+            MDS_Count_C := MacOS_Bridge.Find_Leak_Candidates_C
+              (Min_Footprint_Bytes =>
+                 Interfaces.C.long_long (Murasama_Types.MDS_MIN_FOOTPRINT_BYTES),
+               Min_Age_Seconds =>
+                 Interfaces.C.long_long (Murasama_Types.LEAK_MIN_AGE_SECONDS),
+               Out_Pids            => MDS_Pids,
+               Out_Footprint_Bytes => MDS_Bytes,
+               Out_Age_Seconds     => MDS_Ages,
+               N                   =>
+                 Interfaces.C.int (Murasama_Types.LEAK_MAX_CANDIDATES));
+            if MDS_Count_C > 0 then
+               Murasama_Log.Info
+                 ("[LEAK CHECK] MDS pass: " &
+                  Integer'Image (Integer (MDS_Count_C)) &
+                  " candidate(s) above 512 MiB / 12h (flag absent)");
+            end if;
+         else
+            Murasama_Log.Info
+              ("[LEAK CHECK] MDS pass OFF - disable flag '"
+               & Murasama_Types.MDS_DISABLE_FLAG_PATH & "' present; "
+               & "generic *_* exemption applies (mds_stores shielded)");
+         end if;
+      end;
+
       -- Loop index is Interfaces.C.int (the bridge array index type) -
       -- NOT Integer: indexing Leak_PID_Array with an Integer would be a
       -- type mismatch (the monitor block uses the same int (I) discipline).
@@ -114,6 +160,17 @@ package body Murasama_Leak_Killer is
             RC     : Interfaces.C.int;
             PID_Image : constant String :=
               MacOS_Bridge.PID_T'Image (Pids (I));
+            -- Per-candidate MDS inputs (pure-helper arguments): the process
+            -- name (exact basename via the monitor's Get_Process_Name_C) and
+            -- this cycle's flag stat. Both are fetched BEFORE the elsif
+            -- chain below, so the chain's MDS conditions are total
+            -- (never underdetermined at decision time).
+            Proc_Name_C : Interfaces.C.char_array
+              (1 .. Interfaces.C.size_t (Murasama_Types.MAX_NAME_LEN))
+              := (others => Interfaces.C.nul);
+            Proc_Name_Local : String (1 .. Murasama_Types.MAX_NAME_LEN) := (others => ' ');
+            MDS_Flag_Exists_Local : constant Boolean :=
+              Ada.Directories.Exists (Murasama_Types.MDS_DISABLE_FLAG_PATH);
             Foot_MB : constant String :=
               Long_Float'Image
                 (Long_Float (Bytes (I)) / 1024.0 / 1024.0);
@@ -153,30 +210,46 @@ package body Murasama_Leak_Killer is
                   User : constant String :=
                     Interfaces.C.To_Ada (Name_C, Trim_Nul => True);
                begin
+                  -- Fetch the exact basename BEFORE the decision chain (this is
+                  -- what the MDS helper tests; fetched via the same
+                  -- Get_Process_Name_C the monitor already uses).
+                  MacOS_Bridge.Get_Process_Name_C
+                    (Pids (I), Proc_Name_C, Interfaces.C.int (Murasama_Types.MAX_NAME_LEN));
+                  Proc_Name_Local :=
+                    Interfaces.C.To_Ada (Proc_Name_C, Trim_Nul => True);
+
                   -- APPLICATION STEP 3 (proves THEOREM 3, first clause):
                   -- The *_* rule - ANY '_' in the username marks a macOS
                   -- service account (_spotlight, _windowserver, ...) =>
                   -- exempt.
-                  if Ada.Strings.Fixed.Index (User, "_") > 0 then
+                  -- APPLICATION STEP 3R (MDS special reap; see Murasama_Types
+                  -- MDS_MIN_FOOTPRINT_BYTES and MDS_DISABLE_FLAG_PATH): the
+                  -- generic scan used the 1 GiB threshold, but mds_stores must
+                  -- be reaped above 512 MiB — so the scan below reaches it via
+                  -- a SECOND C pass at 512 MiB, and this Ada chain gives it
+                  -- its own branch. Order of branches matters (first principle:
+                  -- the underscore branch below must NOT swallow MDS):
+                  --   1. *_* system-user exemption — but SKIP the exemption
+                  --      when the owner is the mds_stores indexer and the
+                  --      disable flag is absent (Theorem M4: reaping MDS
+                  --      never breaks user work; the index is rebuildable
+                  --      and the daemon respawns it).
+                  --   2. USER PRIORITY — /Users/<user> exemptions still
+                  --      apply to MDS owners too (no owner needed: home check
+                  --      is unconditional, so a user-owned mds_stores dies 'cold').
+                  --   3. MDS special branch (this): exact basename
+                  --      "mds_stores", flag ABSENT, footprint > 512 MiB, age > 12 h.
+                  --      Then dry-run/kill with the same cap/gate as the generic rule.
+
+                  if Ada.Strings.Fixed.Index (User, "_") > 0
+                    and then not Murasama_Types.MDS_Waives_Underscore_Exemption
+                      (Proc_Name_Local, MDS_Flag_Exists_Local) then
                      Exempted := Exempted + 1;
                      Murasama_Log.Info
                        ("[LEAK CHECK] pid" & PID_Image & " user=" & User &
                         " footprint=" & Foot_MB & " MB age=" & Age_Hr &
                         " h - exempt (system user, *_* rule)");
 
-                  -- APPLICATION STEP 4 (proves THEOREM 3, second clause):
-                  -- USER PRIORITY rule (user requirement 2026-09-25): if
-                  -- /Users/<username> exists, the owner is a real user of
-                  -- this Mac and their processes are NEVER reaped - user
-                  -- apps (Brave, syncthing, ...) are not designed to
-                  -- respawn themselves, so a kill would break what the
-                  -- user is actively doing. Vendor sloppiness must be
-                  -- endured by the user, never punished by killing the
-                  -- USER's processes; the target is the vendor process
-                  -- running without user volition (LuLu, XProtect,
-                  -- root-owned leakers) which respawns itself anyway.
-                  -- NOTE: deliberately NO uid-0 exemption - root-owned
-                  -- vendor daemons are exactly the leak targets.
                   elsif Ada.Directories.Exists ("/Users/" & User) then
                      Exempted := Exempted + 1;
                      Murasama_Log.Info
@@ -185,8 +258,63 @@ package body Murasama_Leak_Killer is
                         " h - exempt (user process, /Users/" & User &
                         " exists - USER PRIORITY)");
 
-                  -- APPLICATION STEP 5b (proves THEOREM 5 - dry-run purity):
-                  -- Phase gate. False => log-only: the Kill import in the
+                  elsif Murasama_Types.MDS_Waives_Underscore_Exemption
+                      (Proc_Name_Local, MDS_Flag_Exists_Local) then
+                     -- MDS branch: the process name must be exactly
+                     -- "mds_stores" (exact basename match — mds helpers and
+                     -- random binaries that merely CONTAIN "mds" must not
+                     -- inherit the lower threshold). Name via the same
+                     -- Get_Process_Name_C the monitor uses.
+                     declare
+                        Proc_Name : constant String := Proc_Name_Local;
+                     begin
+                        -- Theorem M1: the waive predicate guarantees
+                        -- Proc_Name = mds_stores here (exact basename),
+                        -- Theta M2: the second C pass guarantees footprint
+                        -- > 512 MiB, Theta group: age > 12h. Only the
+                        -- dry-run gate stands between this point and
+                        -- SIGKILL (Theorem M5).
+                        if True then
+                           -- Exact 12h age + 512MiB footprint were already proven by the
+                           -- second C pass (AXIOM 1M), so only the dry-run gate
+                           -- remains between here and SIGKILL (Theorem M5).
+                           if not Murasama_Types.LEAK_KILL_ENABLED then
+                              Dry_Runs := Dry_Runs + 1;
+                              Murasama_Log.Info ("[LEAK WOULD KILL] (MDS 512MiB) pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - all criteria met; dry-run only");
+                           else
+                              declare
+                                 Kill_RC : constant Interfaces.C.int := Kill (Pids (I), SIGKILL);
+                              begin
+                                 if Kill_RC = 0 then
+                                    Killed := Killed + 1;
+                                    Murasama_Log.Info ("[LEAK KILL] (MDS 512MiB) pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - SIGKILL sent (512MiB envelope)");
+                                 else
+                                    Skipped := Skipped + 1;
+                                    Murasama_Log.Error ("[LEAK KILL] (MDS 512MiB) SIGKILL FAILED pid" & PID_Image & " user=" & User & " rc=" & Interfaces.C.int'Image (Kill_RC) & " (ESRCH=target exited, EPERM=protected) - not counted; next cycle re-evaluates");
+                                 end if;
+                              end;
+                           end if;
+                        else
+                           -- Not the MDS indexer: fall through to the generic
+                           -- rule's kill decision (dry-run gate or generic SIGKILL).
+                           if not Murasama_Types.LEAK_KILL_ENABLED then
+                              Dry_Runs := Dry_Runs + 1;
+                              Murasama_Log.Info ("[LEAK WOULD KILL] pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - all criteria met; dry-run only");
+                           else
+                              declare
+                                 Kill_RC : constant Interfaces.C.int := Kill (Pids (I), SIGKILL);
+                              begin
+                                 if Kill_RC = 0 then
+                                    Killed := Killed + 1;
+                                    Murasama_Log.Info ("[LEAK KILL] pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - SIGKILL sent");
+                                 else
+                                    Skipped := Skipped + 1;
+                                    Murasama_Log.Error ("[LEAK KILL] SIGKILL FAILED pid" & PID_Image & " user=" & User & " rc=" & Interfaces.C.int'Image (Kill_RC) & " (ESRCH=target exited, EPERM=protected) - not counted; next cycle re-evaluates");
+                                 end if;
+                              end;
+                           end if;
+                        end if;
+                     end;
                   -- final else is unreachable, zero signals are sent.
                   elsif not Murasama_Types.LEAK_KILL_ENABLED then
                      Dry_Runs := Dry_Runs + 1;

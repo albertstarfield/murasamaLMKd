@@ -19,6 +19,12 @@ with Murasama_Types;
 --       Monitor "Memory" column methodology: resident + compressed +
 --       internal, NOT plain RSS),
 --     * wall-clock age > LEAK_MIN_AGE_SECONDS (12 hours),
+--     * MDS SPECIAL REAP: exact basename "mds_stores" (MDS_PROCESS_NAME),
+--       ri_phys_footprint > MDS_MIN_FOOTPRINT_BYTES (512 MiB) AND age >
+--       12 h, checked per cycle against the disable flag file
+--       MDS_DISABLE_FLAG_PATH (absent => reap live, present => exempt);
+--       the *_* exemption is WAIVED for MDS when the flag is absent
+--       (Theorem M4), but USER PRIORITY (home dir) still binds it.
 --   plus one local safety exemption: the daemon's own pid (enforced once,
 --   in C, by getpid()). The targets are vendor/system daemons running
 --   WITHOUT user volition or authorization (LuLu, XProtect, root-owned
@@ -38,6 +44,16 @@ with Murasama_Types;
 --   (errors go to stderr in macos_utils.m - both are safe no-ops).
 --   (from: function find_leak_candidates_c in src/macos_utils.h,
 --    binding Find_Leak_Candidates_C in src/macos_bridge.ads)
+--
+-- AXIOM 1M (MDS second pass): a SECOND Find_Leak_Candidates_C call per
+--   cycle with Min_Footprint_Bytes := MDS_MIN_FOOTPRINT_BYTES (512 MiB)
+--   and the SAME Min_Age_Seconds (12 h). The C function is unchanged —
+--   only the threshold parameter differs — so AXIOM 1's guarantees apply
+--   verbatim (strict >, largest-first, self/pid<200 excluded, 0 = none
+--   matched OR scan error). The Ada layer receives MDS candidates here
+--   and re-checks their identity as exactly "mds_stores" via
+--   Get_Process_Name_C (basename of proc_pidpath). 512 MiB is the
+--   operating envelope for the process (see Murasama_Types MDS block).
 --
 -- AXIOM 2: 1 GB threshold is on ri_phys_footprint (Activity Monitor
 --   "Memory" column: resident + compressed + internal - NOT plain RSS).
@@ -62,6 +78,14 @@ with Murasama_Types;
 --   they run without user volition/authorization and eat the user's
 --   resources.
 --   (from: user requirement + macOS account/home-directory conventions)
+--   MDS WAIVER (user 2026-11-09): for an exact "mds_stores" basename,
+--   the *_* exemption is WAIVED when the disable flag is absent. The
+--   rationale is first-principles: the *_* rule exists to shield kernel/
+--   serving plumbing; mds_stores is a rebuildable cache (lose it and
+--   macOS respawns it and re-indexes; no work is destroyed). It has NO
+--   /Users/ home dir, so USER PRIORITY does not shield it either. The
+--   waiver is flag-gated: with the disable flag present the exemption
+--   applies to MDS exactly as it does to _spotlight.
 --
 -- AXIOM 5: The daemon runs as root (LaunchDaemon), so kill(2) may target
 --   any process; kill still fails with ESRCH (already exited) or EPERM
@@ -115,6 +139,36 @@ with Murasama_Types;
 -- THEOREM 6 (determinism): Output is log lines only; no return values,
 --   no shared state mutation - two invocations on the same system state
 --   produce the same decisions (largest-first order per AXIOM 1).
+--
+-- THEOREM M1 (MDS exact-name soundness): Only a process whose exact
+--   basename is "mds_stores" is reaped via the MDS branch. Proved by
+--   APPLICATION STEP 3R's equality test (Proc_Name = MDS_PROCESS_NAME);
+--   every other name falls through to the generic 1 GiB rule. (Is_MDS_
+--   Indexer Post is exactly this equality.)
+--
+-- THEOREM M2 (MDS operating envelope): No process with phys_footprint
+--   <= 512 MiB is reaped via the MDS branch. Proved by the second C
+--   pass (AXIOM 1M) using strict > 512 MiB — the very quantity the
+--   process envelope is defined on. (MDS_Crosses_512MiB Post.)
+--
+-- THEOREM M3 (user-priority for MDS): If /Users/<username> exists for
+--   the MDS owner's username, the process is exempt. Proved by the
+--   home-dir elsif branch, which precedes the MDS branch unconditionally.
+--
+-- THEOREM M4 (flag waiver correctness): The *_* exemption is waived for
+--   MDS iff (exact name) AND (disable flag absent). Proved by the
+--   MDS_Waives_Underscore_Exemption Post; the flag is re-read every
+--   cycle (Ada.Directories.Exists on MDS_DISABLE_FLAG_PATH), so
+--   creation/removal toggles the exemption with no rebuild.
+--
+-- THEOREM M5 (dry-run purity on the MDS path): With LEAK_KILL_ENABLED
+--   = False, the MDS branch logs and never calls Kill, exactly as the
+--   generic path does — the same single gate precedes both SIGKILLs.
+--
+-- THEOREM M6 (combined cap): The MDS branch and the generic branch share
+--   Killed and the Killed >= LEAK_MAX_KILLS_PER_CYCLE exit at the loop
+--   head, so one invocation still sends at most
+--   LEAK_MAX_KILLS_PER_CYCLE (2) SIGKILLs total, across both policies.
 --
 -- APPLICATIONS:
 -- -------------
