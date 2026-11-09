@@ -56,12 +56,14 @@ package Murasama_Types is
    -- matches beyond the buffer wait for later cycles after the cap).
    LEAK_MAX_CANDIDATES         : constant := 8;
    -- MDS FINAL CORRECTION (user 2026-11-09): mds_stores must operate at
-   -- 512 MiB, not 8 GB. Observed 2026-11-09 (footprint(1), pid 555,
+   -- 768 MiB (user corrected 2026-11-09 from the earlier 512 MiB
+   -- figure; the daemon code is the instrument, the user is the policy).
+   -- Observed 2026-11-09 (footprint(1), pid 555,
    -- owner _mds_stores, age 04-21:09:12): phys_footprint 8909 MB, of which
    -- Malloc Small = 8794 MB (98.7%). Helpers at 8 MB, mds at 77 MB. The
    -- earlier "768MB" figure was an underestimate; raw measured value used.
-   -- Owner requirement: this process must stay <= 512 MiB; action = the
-   -- same SIGKILL path as the generic 1GB/12h leak rule, but at 512 MiB.
+   -- Owner requirement: this process must stay <= 768 MiB; action = the
+   -- same SIGKILL path as the generic 1GB/12h leak rule, but at 768 MiB.
    -- Why this daemon on this target (first principles, not marketing):
    --   * mds_stores is Apple's metadata indexer. It runs as _mds_stores
    --     (underscore owner) with NO /Users/ home dir, so the generic *_*
@@ -76,16 +78,18 @@ package Murasama_Types is
    --     that must never die are user processes — this is a vendor system
    --     daemon precisely in scope ("targets are vendor/system daemons
    --     running without user volition or authorization").
-   --   * 512 MiB is therefore the operating envelope for the process; the
+   --   * 768 MiB is therefore the operating envelope for the process; the
    --     reap is the "killed" signal when it leaves that envelope. The
    --     generic 1 GiB threshold stays for everything else.
    -- IMPLEMENTATION SHAPE (mirrors the generic rule exactly):
    --   * MDS process name (exact basename, no substring): "mds_stores".
-   --     mds / mds_stores helpers (8 MB) stay below 512 MiB anyway, so
+   --     mds / mds_stores helpers (8 MB) stay below 768 MiB anyway, so
    --     exact-name + footprint gate needs no special case for them.
-   --   * strict phys_footprint > 512 MiB (536870912 B = 512*1024*1024).
+   --     (Helpers were measured at 7-8 MB, mds at 77 MB; 768 MiB spares
+   --      them with >10x margin, same as the old 512 MiB figure.)
+   --   * strict phys_footprint > 768 MiB (805306368 B = 768*1024*1024).
    --   * wall-clock age > LEAK_MIN_AGE_SECONDS (12 h), same as generic —
-   --     a freshly-rebuilt index briefly past 512 MiB while re-indexing
+   --     a freshly-rebuilt index briefly past 768 MiB while re-indexing
    --     after a reap is not a leak; only a long-lived, swollen index is.
    --   * other exemptions unchanged: unknown owner => no kill; /Users/
    --     home => no kill (user priority; USER PRIORITY applies to MDS
@@ -103,7 +107,7 @@ package Murasama_Types is
    --   exemption", i.e. the daemon still reaps — existence is the only
    --   signal that can exempt, and it is re-read every cycle).
    MDS_PROCESS_NAME            : constant String := "mds_stores";
-   MDS_MIN_FOOTPRINT_BYTES     : constant := 512 * 1024 * 1024;
+   MDS_MIN_FOOTPRINT_BYTES     : constant := 768 * 1024 * 1024;
    MDS_DISABLE_FLAG_PATH       : constant String :=
      "/usr/local/murasamaLMKd/disable_leak_killer_mds_stores";
     -- Phase gate: False = DRY-RUN ("[LEAK WOULD KILL]" log lines only),
@@ -164,14 +168,14 @@ package Murasama_Types is
      with Post => (MDS_Special_Reap_Disabled'Result = Flag_Exists);
 
    -- The MDS process-name test is an EXACT match: no substring, no prefix.
-   -- It is what keeps mds helpers (8 MB, below 512 MiB anyway) and binaries
+   -- It is what keeps mds helpers (8 MB, below 768 MiB anyway) and binaries
    -- merely containing "mds" from inheriting the lower threshold.
    function Is_MDS_Indexer (Process_Name : String) return Boolean
      with Post => (Is_MDS_Indexer'Result = (Process_Name = MDS_PROCESS_NAME));
 
-   -- Footprint gate for the MDS envelope: strict > 512 MiB.
-   function MDS_Crosses_512MiB (Phys_Footprint_Bytes : Long_Long_Integer) return Boolean
-     with Post => (MDS_Crosses_512MiB'Result =
+   -- Footprint gate for the MDS envelope: strict > 768 MiB.
+   function MDS_Crosses_768MiB (Phys_Footprint_Bytes : Long_Long_Integer) return Boolean
+     with Post => (MDS_Crosses_768MiB'Result =
                    (Phys_Footprint_Bytes > Long_Long_Integer (MDS_MIN_FOOTPRINT_BYTES)));
 
    -- The *_* exemption's MDS waiver, on published inputs (no I/O): the

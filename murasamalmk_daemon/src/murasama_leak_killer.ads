@@ -20,7 +20,7 @@ with Murasama_Types;
 --       internal, NOT plain RSS),
 --     * wall-clock age > LEAK_MIN_AGE_SECONDS (12 hours),
 --     * MDS SPECIAL REAP: exact basename "mds_stores" (MDS_PROCESS_NAME),
---       ri_phys_footprint > MDS_MIN_FOOTPRINT_BYTES (512 MiB) AND age >
+--       ri_phys_footprint > MDS_MIN_FOOTPRINT_BYTES (768 MiB) AND age >
 --       12 h, checked per cycle against the disable flag file
 --       MDS_DISABLE_FLAG_PATH (absent => reap live, present => exempt);
 --       the *_* exemption is WAIVED for MDS when the flag is absent
@@ -46,13 +46,13 @@ with Murasama_Types;
 --    binding Find_Leak_Candidates_C in src/macos_bridge.ads)
 --
 -- AXIOM 1M (MDS second pass): a SECOND Find_Leak_Candidates_C call per
---   cycle with Min_Footprint_Bytes := MDS_MIN_FOOTPRINT_BYTES (512 MiB)
+--   cycle with Min_Footprint_Bytes := MDS_MIN_FOOTPRINT_BYTES (768 MiB)
 --   and the SAME Min_Age_Seconds (12 h). The C function is unchanged —
 --   only the threshold parameter differs — so AXIOM 1's guarantees apply
 --   verbatim (strict >, largest-first, self/pid<200 excluded, 0 = none
 --   matched OR scan error). The Ada layer receives MDS candidates here
 --   and re-checks their identity as exactly "mds_stores" via
---   Get_Process_Name_C (basename of proc_pidpath). 512 MiB is the
+--   Get_Process_Name_C (basename of proc_pidpath). 768 MiB is the
 --   operating envelope for the process (see Murasama_Types MDS block).
 --
 -- AXIOM 2: 1 GB threshold is on ri_phys_footprint (Activity Monitor
@@ -147,9 +147,9 @@ with Murasama_Types;
 --   Indexer Post is exactly this equality.)
 --
 -- THEOREM M2 (MDS operating envelope): No process with phys_footprint
---   <= 512 MiB is reaped via the MDS branch. Proved by the second C
---   pass (AXIOM 1M) using strict > 512 MiB — the very quantity the
---   process envelope is defined on. (MDS_Crosses_512MiB Post.)
+--   <= 768 MiB is reaped via the MDS branch. Proved by the second C
+--   pass (AXIOM 1M) using strict > 768 MiB — the very quantity the
+--   process envelope is defined on. (MDS_Crosses_768MiB Post.)
 --
 -- THEOREM M3 (user-priority for MDS): If /Users/<username> exists for
 --   the MDS owner's username, the process is exempt. Proved by the

@@ -48,13 +48,13 @@ package body Murasama_Types is
       return Process_Name = MDS_PROCESS_NAME;
    end Is_MDS_Indexer;
 
-   function MDS_Crosses_512MiB
+   function MDS_Crosses_768MiB
      (Phys_Footprint_Bytes : Long_Long_Integer) return Boolean is
    begin
-      -- Strict >: a process sitting exactly at 512 MiB has not LEFT the
+      -- Strict >: a process sitting exactly at 768 MiB has not LEFT the
       -- envelope; the observed 8909 MiB hog is 17x above it.
       return Phys_Footprint_Bytes > Long_Long_Integer (MDS_MIN_FOOTPRINT_BYTES);
-   end MDS_Crosses_512MiB;
+   end MDS_Crosses_768MiB;
 
    function MDS_Waives_Underscore_Exemption
      (Process_Name : String; Flag_Exists : Boolean) return Boolean is

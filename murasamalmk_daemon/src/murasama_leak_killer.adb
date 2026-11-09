@@ -95,7 +95,7 @@ package body Murasama_Leak_Killer is
       -- ── MDS SECOND PASS (MDS special reap is active only when the
       --    disable flag file "/usr/local/murasamaLMKd/
       --    disable_leak_killer_mds_stores" does NOT exist). This pass
-      --    finds pids above 512 MiB so the 512 MiB envelope isn't
+      --    finds pids above 768 MiB so the 768 MiB envelope isn't
       --    invisible to the generic 1 GiB scan. Same C function, same
       --    age gate (12h), same exclusion set (self, pid < 200,
       --    largest-footprint-first). MDS-only candidates are tracked
@@ -128,7 +128,7 @@ package body Murasama_Leak_Killer is
                Murasama_Log.Info
                  ("[LEAK CHECK] MDS pass: " &
                   Integer'Image (Integer (MDS_Count_C)) &
-                  " candidate(s) above 512 MiB / 12h (flag absent)");
+                  " candidate(s) above 768 MiB / 12h (flag absent)");
             end if;
          else
             Murasama_Log.Info
@@ -225,8 +225,8 @@ package body Murasama_Leak_Killer is
                   -- APPLICATION STEP 3R (MDS special reap; see Murasama_Types
                   -- MDS_MIN_FOOTPRINT_BYTES and MDS_DISABLE_FLAG_PATH): the
                   -- generic scan used the 1 GiB threshold, but mds_stores must
-                  -- be reaped above 512 MiB — so the scan below reaches it via
-                  -- a SECOND C pass at 512 MiB, and this Ada chain gives it
+                  -- be reaped above 768 MiB — so the scan below reaches it via
+                  -- a SECOND C pass at 768 MiB, and this Ada chain gives it
                   -- its own branch. Order of branches matters (first principle:
                   -- the underscore branch below must NOT swallow MDS):
                   --   1. *_* system-user exemption — but SKIP the exemption
@@ -238,7 +238,7 @@ package body Murasama_Leak_Killer is
                   --      apply to MDS owners too (no owner needed: home check
                   --      is unconditional, so a user-owned mds_stores dies 'cold').
                   --   3. MDS special branch (this): exact basename
-                  --      "mds_stores", flag ABSENT, footprint > 512 MiB, age > 12 h.
+                  --      "mds_stores", flag ABSENT, footprint > 768 MiB, age > 12 h.
                   --      Then dry-run/kill with the same cap/gate as the generic rule.
 
                   if Ada.Strings.Fixed.Index (User, "_") > 0
@@ -270,27 +270,27 @@ package body Murasama_Leak_Killer is
                      begin
                         -- Theorem M1: the waive predicate guarantees
                         -- Proc_Name = mds_stores here (exact basename),
-                        -- Theta M2: the second C pass guarantees footprint
-                        -- > 512 MiB, Theta group: age > 12h. Only the
+                        -- Theorem M2: the second C pass guarantees footprint
+                        -- > 768 MiB, Theorem M2 group: age > 12h. Only the
                         -- dry-run gate stands between this point and
                         -- SIGKILL (Theorem M5).
                         if True then
-                           -- Exact 12h age + 512MiB footprint were already proven by the
+                           -- Exact 12h age + 768MiB footprint were already proven by the
                            -- second C pass (AXIOM 1M), so only the dry-run gate
                            -- remains between here and SIGKILL (Theorem M5).
                            if not Murasama_Types.LEAK_KILL_ENABLED then
                               Dry_Runs := Dry_Runs + 1;
-                              Murasama_Log.Info ("[LEAK WOULD KILL] (MDS 512MiB) pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - all criteria met; dry-run only");
+                              Murasama_Log.Info ("[LEAK WOULD KILL] (MDS 768MiB) pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - all criteria met; dry-run only");
                            else
                               declare
                                  Kill_RC : constant Interfaces.C.int := Kill (Pids (I), SIGKILL);
                               begin
                                  if Kill_RC = 0 then
                                     Killed := Killed + 1;
-                                    Murasama_Log.Info ("[LEAK KILL] (MDS 512MiB) pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - SIGKILL sent (512MiB envelope)");
+                                    Murasama_Log.Info ("[LEAK KILL] (MDS 768MiB) pid" & PID_Image & " proc=" & Proc_Name & " user=" & User & " footprint=" & Foot_MB & " MB age=" & Age_Hr & " h - SIGKILL sent (768MiB envelope)");
                                  else
                                     Skipped := Skipped + 1;
-                                    Murasama_Log.Error ("[LEAK KILL] (MDS 512MiB) SIGKILL FAILED pid" & PID_Image & " user=" & User & " rc=" & Interfaces.C.int'Image (Kill_RC) & " (ESRCH=target exited, EPERM=protected) - not counted; next cycle re-evaluates");
+                                    Murasama_Log.Error ("[LEAK KILL] (MDS 768MiB) SIGKILL FAILED pid" & PID_Image & " user=" & User & " rc=" & Interfaces.C.int'Image (Kill_RC) & " (ESRCH=target exited, EPERM=protected) - not counted; next cycle re-evaluates");
                                  end if;
                               end;
                            end if;
