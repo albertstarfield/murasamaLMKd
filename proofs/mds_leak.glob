@@ -1,0 +1,252 @@
+DIGEST 52f74d2d3e460dc7530d59ac6fb8a2ef
+Fmds_leak
+R27:30 Stdlib.Bool.Bool <> <> lib
+R32:36 Stdlib.Arith.Arith <> <> lib
+R38:40 Stdlib.micromega.Lia <> <> lib
+R42:47 Stdlib.NArith.NArith <> <> lib
+def 126:134 <> GEN_MIN_N
+def 186:194 <> MDS_MIN_N
+def 248:256 <> AGE_MIN_N
+rec 278:281 <> Cand
+proj 290:299 <> ownerKnown
+proj 309:321 <> hasUnderscore
+proj 331:340 <> hasHomeDir
+proj 352:356 <> isMds
+proj 366:375 <> footprintN
+proj 382:385 <> ageN
+R303:306 Corelib.Init.Datatypes <> bool ind
+R325:328 Corelib.Init.Datatypes <> bool ind
+R344:347 Corelib.Init.Datatypes <> bool ind
+R360:363 Corelib.Init.Datatypes <> bool ind
+R379:379 Corelib.Numbers.BinNums <> N ind
+R389:389 Corelib.Numbers.BinNums <> N ind
+def 406:421 <> mdsSpecialActive
+R439:442 Corelib.Init.Datatypes <> bool ind
+binder 424:435 <> flagDisabled:8
+R447:450 Corelib.Init.Datatypes <> bool ind
+R455:458 Corelib.Init.Datatypes <> negb def
+R460:471 mds_leak <> flagDisabled:8 var
+def 486:501 <> underscoreExempt
+R508:511 mds_leak <> Cand rec
+binder 504:504 <> c:9
+R530:533 Corelib.Init.Datatypes <> bool ind
+binder 515:526 <> flagDisabled:10
+R538:541 Corelib.Init.Datatypes <> bool ind
+R563:566 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R548:560 mds_leak <> hasUnderscore proj
+R562:562 mds_leak <> c:9 var
+R567:570 Corelib.Init.Datatypes <> negb def
+R580:583 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R573:577 mds_leak <> isMds proj
+R579:579 mds_leak <> c:9 var
+R584:599 mds_leak <> mdsSpecialActive def
+R601:612 mds_leak <> flagDisabled:10 var
+def 628:638 <> footprintOK
+R645:648 mds_leak <> Cand rec
+binder 641:641 <> c:11
+R653:656 Corelib.Init.Datatypes <> bool ind
+R666:670 mds_leak <> isMds proj
+R672:672 mds_leak <> c:11 var
+R728:732 Stdlib.NArith.BinNat N ltb def
+R734:742 mds_leak <> GEN_MIN_N def
+R745:754 mds_leak <> footprintN proj
+R756:756 mds_leak <> c:11 var
+R679:683 Stdlib.NArith.BinNat N ltb def
+R685:693 mds_leak <> MDS_MIN_N def
+R696:705 mds_leak <> footprintN proj
+R707:707 mds_leak <> c:11 var
+def 772:781 <> shouldKill
+R788:791 mds_leak <> Cand rec
+binder 784:784 <> c:12
+R818:821 Corelib.Init.Datatypes <> bool ind
+binder 795:801 <> enabled:13
+binder 803:814 <> flagDisabled:14
+R826:829 Corelib.Init.Datatypes <> bool ind
+R960:963 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R932:935 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R915:918 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R890:895 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R848:851 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R836:845 mds_leak <> ownerKnown proj
+R847:847 mds_leak <> c:12 var
+R852:855 Corelib.Init.Datatypes <> negb def
+R858:873 mds_leak <> underscoreExempt def
+R875:875 mds_leak <> c:12 var
+R877:888 mds_leak <> flagDisabled:14 var
+R896:899 Corelib.Init.Datatypes <> negb def
+R902:911 mds_leak <> hasHomeDir proj
+R913:913 mds_leak <> c:12 var
+R919:929 mds_leak <> footprintOK def
+R931:931 mds_leak <> c:12 var
+R936:940 Stdlib.NArith.BinNat N ltb def
+R942:950 mds_leak <> AGE_MIN_N def
+R953:956 mds_leak <> ageN proj
+R958:958 mds_leak <> c:12 var
+R964:970 mds_leak <> enabled:13 var
+def 985:990 <> mds555
+R998:1007 mds_leak <> ownerKnown proj
+R1018:1030 mds_leak <> hasUnderscore proj
+R1043:1052 mds_leak <> hasHomeDir proj
+R1064:1068 mds_leak <> isMds proj
+R1079:1088 mds_leak <> footprintN proj
+R1109:1112 mds_leak <> ageN proj
+R1012:1015 Corelib.Init.Datatypes <> true constr
+R1035:1038 Corelib.Init.Datatypes <> true constr
+R1057:1061 Corelib.Init.Datatypes <> false constr
+R1073:1076 Corelib.Init.Datatypes <> true constr
+def 1141:1146 <> mds388
+R1154:1163 mds_leak <> ownerKnown proj
+R1174:1186 mds_leak <> hasUnderscore proj
+R1200:1209 mds_leak <> hasHomeDir proj
+R1221:1225 mds_leak <> isMds proj
+R1237:1246 mds_leak <> footprintN proj
+R1265:1268 mds_leak <> ageN proj
+R1168:1171 Corelib.Init.Datatypes <> true constr
+R1191:1195 Corelib.Init.Datatypes <> false constr
+R1214:1218 Corelib.Init.Datatypes <> false constr
+R1230:1234 Corelib.Init.Datatypes <> false constr
+def 1297:1302 <> mds600
+R1310:1319 mds_leak <> ownerKnown proj
+R1330:1342 mds_leak <> hasUnderscore proj
+R1355:1364 mds_leak <> hasHomeDir proj
+R1376:1380 mds_leak <> isMds proj
+R1391:1400 mds_leak <> footprintN proj
+R1420:1423 mds_leak <> ageN proj
+R1324:1327 Corelib.Init.Datatypes <> true constr
+R1347:1350 Corelib.Init.Datatypes <> true constr
+R1369:1373 Corelib.Init.Datatypes <> false constr
+R1385:1388 Corelib.Init.Datatypes <> true constr
+prf 1448:1460 <> mds555_killed
+R1492:1494 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1464:1473 mds_leak <> shouldKill def
+R1475:1480 mds_leak <> mds555 def
+R1482:1485 Corelib.Init.Datatypes <> true constr
+R1487:1491 Corelib.Init.Datatypes <> false constr
+R1495:1498 Corelib.Init.Datatypes <> true constr
+prf 1545:1561 <> mds388_not_killed
+R1593:1595 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1565:1574 mds_leak <> shouldKill def
+R1576:1581 mds_leak <> mds388 def
+R1583:1586 Corelib.Init.Datatypes <> true constr
+R1588:1592 Corelib.Init.Datatypes <> false constr
+R1596:1600 Corelib.Init.Datatypes <> false constr
+prf 1647:1664 <> mds600_flag_exempt
+R1695:1697 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1668:1677 mds_leak <> shouldKill def
+R1679:1684 mds_leak <> mds600 def
+R1686:1689 Corelib.Init.Datatypes <> true constr
+R1691:1694 Corelib.Init.Datatypes <> true constr
+R1698:1702 Corelib.Init.Datatypes <> false constr
+prf 1749:1773 <> mds600_flag_absent_killed
+R1805:1807 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1777:1786 mds_leak <> shouldKill def
+R1788:1793 mds_leak <> mds600 def
+R1795:1798 Corelib.Init.Datatypes <> true constr
+R1800:1804 Corelib.Init.Datatypes <> false constr
+R1808:1811 Corelib.Init.Datatypes <> true constr
+prf 1858:1872 <> mds_flag_exempt
+binder 1883:1883 <> c:15
+binder 1885:1891 <> enabled:16
+R1910:1913 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1903:1905 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1896:1900 mds_leak <> isMds proj
+R1902:1902 mds_leak <> c:15 var
+R1906:1909 Corelib.Init.Datatypes <> true constr
+R1936:1941 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1929:1931 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1914:1926 mds_leak <> hasUnderscore proj
+R1928:1928 mds_leak <> c:15 var
+R1932:1935 Corelib.Init.Datatypes <> true constr
+R1967:1969 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1942:1951 mds_leak <> shouldKill def
+R1953:1953 mds_leak <> c:15 var
+R1955:1961 mds_leak <> enabled:16 var
+R1963:1966 Corelib.Init.Datatypes <> true constr
+R1970:1974 Corelib.Init.Datatypes <> false constr
+R2017:2026 mds_leak <> shouldKill def
+R2029:2044 mds_leak <> underscoreExempt def
+R2047:2062 mds_leak <> mdsSpecialActive def
+R2098:2109 Stdlib.Bool.Bool <> andb_false_r thm
+R2120:2131 Stdlib.Bool.Bool <> andb_false_l thm
+prf 2159:2171 <> mds_below_512
+binder 2182:2182 <> c:17
+binder 2184:2190 <> enabled:18
+binder 2192:2203 <> flagDisabled:19
+R2222:2227 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2215:2217 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2208:2212 mds_leak <> isMds proj
+R2214:2214 mds_leak <> c:17 var
+R2218:2221 Corelib.Init.Datatypes <> true constr
+R2257:2262 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2241:2244 Stdlib.NArith.BinNat <> ::N_scope:x_'<='_x not
+R2229:2238 mds_leak <> footprintN proj
+R2240:2240 mds_leak <> c:17 var
+R2245:2253 mds_leak <> MDS_MIN_N def
+R2296:2298 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2263:2272 mds_leak <> shouldKill def
+R2274:2274 mds_leak <> c:17 var
+R2276:2282 mds_leak <> enabled:18 var
+R2284:2295 mds_leak <> flagDisabled:19 var
+R2299:2303 Corelib.Init.Datatypes <> false constr
+R2360:2369 mds_leak <> shouldKill def
+R2372:2382 mds_leak <> footprintOK def
+R2444:2446 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2414:2418 Stdlib.NArith.BinNat N ltb def
+R2420:2428 mds_leak <> MDS_MIN_N def
+R2431:2440 mds_leak <> footprintN proj
+R2447:2451 Corelib.Init.Datatypes <> false constr
+R2465:2472 Stdlib.NArith.BinNat N ltb_ge thm
+R2510:2521 Stdlib.Bool.Bool <> andb_false_r thm
+R2532:2543 Stdlib.Bool.Bool <> andb_false_l thm
+prf 2571:2587 <> mds_unknown_never
+binder 2598:2598 <> c:20
+binder 2600:2606 <> enabled:21
+binder 2608:2619 <> flagDisabled:22
+R2644:2647 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2636:2638 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2624:2633 mds_leak <> ownerKnown proj
+R2635:2635 mds_leak <> c:20 var
+R2639:2643 Corelib.Init.Datatypes <> false constr
+R2681:2683 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2648:2657 mds_leak <> shouldKill def
+R2659:2659 mds_leak <> c:20 var
+R2661:2667 mds_leak <> enabled:21 var
+R2669:2680 mds_leak <> flagDisabled:22 var
+R2684:2688 Corelib.Init.Datatypes <> false constr
+R2740:2749 mds_leak <> shouldKill def
+R2773:2784 Stdlib.Bool.Bool <> andb_false_l thm
+prf 2812:2825 <> mds_home_never
+binder 2836:2836 <> c:23
+binder 2838:2844 <> enabled:24
+binder 2846:2857 <> flagDisabled:25
+R2881:2884 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2874:2876 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2862:2871 mds_leak <> hasHomeDir proj
+R2873:2873 mds_leak <> c:23 var
+R2877:2880 Corelib.Init.Datatypes <> true constr
+R2918:2920 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2885:2894 mds_leak <> shouldKill def
+R2896:2896 mds_leak <> c:23 var
+R2898:2904 mds_leak <> enabled:24 var
+R2906:2917 mds_leak <> flagDisabled:25 var
+R2921:2925 Corelib.Init.Datatypes <> false constr
+R2977:2986 mds_leak <> shouldKill def
+R3017:3028 Stdlib.Bool.Bool <> andb_false_r thm
+R3039:3050 Stdlib.Bool.Bool <> andb_false_l thm
+prf 3078:3083 <> dryrun
+binder 3094:3094 <> c:26
+binder 3096:3107 <> flagDisabled:27
+R3141:3143 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3110:3119 mds_leak <> shouldKill def
+R3121:3121 mds_leak <> c:26 var
+R3123:3127 Corelib.Init.Datatypes <> false constr
+R3129:3140 mds_leak <> flagDisabled:27 var
+R3144:3148 Corelib.Init.Datatypes <> false constr
+R3190:3199 mds_leak <> shouldKill def
+R3214:3223 mds_leak <> ownerKnown proj
+R3239:3254 mds_leak <> underscoreExempt def
+R3285:3294 mds_leak <> hasHomeDir proj
+R3310:3320 mds_leak <> footprintOK def
+R3338:3342 Stdlib.NArith.BinNat N ltb def
+R3344:3352 mds_leak <> AGE_MIN_N def
+R3355:3358 mds_leak <> ageN proj

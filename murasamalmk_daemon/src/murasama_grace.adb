@@ -20,6 +20,45 @@ package body Murasama_Grace is
    function Kill_Process (PID : int; Sig : int) return int;
    pragma Import (C, Kill_Process, "kill");
 
+   procedure Run_System_Command_C (Cmd : char_array);
+   pragma Import (C, Run_System_Command_C, "run_system_command_c");
+
+   function Trim_Int (V : int) return String;
+   function Trim_Float (V : Long_Float) return String;
+
+   function System_Stable return Boolean is
+      Page    : constant MacOS_Bridge.UINT64_T := MacOS_Bridge.Get_Page_Size_C;
+      Free_MB : constant Long_Float :=
+        Long_Float (MacOS_Bridge.Get_Free_MB_C (Page));
+      Pressure : constant Integer :=
+        Integer (MacOS_Bridge.Get_Memory_Pressure_Level_C);
+   begin
+      return Pressure <= 2
+        and then Free_MB >= Murasama_Types.CRITICAL_FREE_MB * 4.0;
+   end System_Stable;
+
+   --  Every freeze (initial or extended) also produces a macOS notification;
+   --  zenity may be unavailable in the user's GUI session, osascript is not.
+   procedure Notify_Freeze
+     (PID : MacOS_Bridge.PID_T; Risk_Pct : Long_Float; Extended : Boolean)
+   is
+      UID : constant MacOS_Bridge.UID_T := MacOS_Bridge.Get_Console_UID_C;
+      Msg : constant String :=
+        "pid" & Trim_Int (PID) &
+        (if Extended then " still frozen; " else " frozen; ") &
+        "risk " & Trim_Float (Risk_Pct) & "% - not killed";
+      Cmd : constant String :=        "launchctl asuser " & Trim_Int (int (UID)) &
+        " /usr/bin/osascript -e 'display notification """ & Msg &
+        """ with title ""An program attempted to Freeze the whole computer""'";
+   begin
+      if UID = 0 then
+         return;
+      end if;
+      Run_System_Command_C (To_C (Cmd));
+   exception
+      when others => null;
+   end Notify_Freeze;
+
    type Phase_Kind is (Held, Rechecking);
 
    type Hold_Record is record
@@ -31,13 +70,16 @@ package body Murasama_Grace is
       Started        : Time := Clock;
       Sample_Bytes   : MacOS_Bridge.UINT64_T := 0;
       Stops          : Natural := 0;
+      Hold_Seconds   : Long_Float := 60.0;
+      Total_Held     : Long_Float := 0.0;
    end record;
 
    type Hold_Array is array (1 .. Murasama_Types.GRACE_MAX_SLOTS) of Hold_Record;
    Holds : Hold_Array :=
      (others => (Active => False, Phase => Held, PID => 0,
                  Gradient_MB_S => 0.0, Risk_Pct => 0.0, Started => Clock,
-                 Sample_Bytes => 0, Stops => 0));
+                 Sample_Bytes => 0, Stops => 0, Hold_Seconds => 60.0,
+                 Total_Held => 0.0));
 
    function Trim_Int (V : int) return String is
       S : constant String := int'Image (V);
@@ -120,11 +162,12 @@ package body Murasama_Grace is
       return Murasama_Types.Grace_Risk_Percent (Gradient_MB_S, Total_RAM_MB);
    end Risk_For;
 
-   procedure Begin_Hold
+   procedure Start_Hold
      (PID           : Interfaces.C.int;
       Gradient_MB_S : Long_Float;
       Total_RAM_MB  : Long_Float;
-      ML_Predicted  : Integer)
+      ML_Predicted  : Integer;
+      Hold_Seconds  : Long_Float)
    is
       Slot : Natural := 0;
       RC   : int;
@@ -147,9 +190,11 @@ package body Murasama_Grace is
         (Active => True, Phase => Held, PID => PID,
          Gradient_MB_S => Gradient_MB_S,
          Risk_Pct => Risk_For (Gradient_MB_S, Total_RAM_MB),
-         Started => Clock, Sample_Bytes => 0, Stops => 1);
+         Started => Clock, Sample_Bytes => 0, Stops => 1,
+         Hold_Seconds => Hold_Seconds, Total_Held => 0.0);
 
       Notify_Warden (PID, Holds (Slot).Risk_Pct);
+      Notify_Freeze (PID, Holds (Slot).Risk_Pct, False);
       RC := Kill_Process (PID, SIGSTOP);
       if RC /= 0 then
          Holds (Slot).Active := False;
@@ -161,11 +206,32 @@ package body Murasama_Grace is
          Murasama_Log.Info ("[GRACE] SIGSTOP pid" & Trim_Int (PID) &
                             " gradient=" & Trim_Float (Gradient_MB_S) &
                             " MB/s risk=" & Trim_Float (Holds (Slot).Risk_Pct) &
-                            "% held for " &
-                            Integer'Image (Murasama_Types.GRACE_HOLD_SECONDS) &
+                            "% held for " & Trim_Float (Hold_Seconds) &
                             "s (NO KILL)");
       end if;
+   end Start_Hold;
+
+   procedure Begin_Hold
+     (PID           : Interfaces.C.int;
+      Gradient_MB_S : Long_Float;
+      Total_RAM_MB  : Long_Float;
+      ML_Predicted  : Integer)
+   is
+   begin
+      Start_Hold (PID, Gradient_MB_S, Total_RAM_MB, ML_Predicted,
+                  Long_Float (Murasama_Types.GRACE_HOLD_SECONDS));
    end Begin_Hold;
+
+   procedure Begin_Long_Hold
+     (PID           : Interfaces.C.int;
+      Gradient_MB_S : Long_Float;
+      Total_RAM_MB  : Long_Float;
+      ML_Predicted  : Integer)
+   is
+   begin
+      Start_Hold (PID, Gradient_MB_S, Total_RAM_MB, ML_Predicted,
+                  Long_Float (Murasama_Types.WHITELIST_HOLD_SECONDS));
+   end Begin_Long_Hold;
 
    procedure Service is
       Now : constant Time := Clock;
@@ -176,23 +242,47 @@ package body Murasama_Grace is
       for I in Holds'Range loop
          if Holds (I).Active
            and then Holds (I).Phase = Held
-           and then Murasama_Types.Grace_Expired (To_Duration (Now - Holds (I).Started))
+           and then To_Duration (Now - Holds (I).Started)
+                    >= Duration (Long_Float'Min (Holds (I).Hold_Seconds, 60.0))
          then
-            RC := Kill_Process (Holds (I).PID, SIGCONT);
-            if RC /= 0 then
-               Murasama_Log.Error ("[GRACE] SIGCONT failed on pid" &
-                                   Trim_Int (Holds (I).PID) & " rc=" &
-                                   Trim_Int (RC));
-            else
-               Murasama_Log.Info ("[GRACE] SIGCONT pid" &
-                                  Trim_Int (Holds (I).PID) &
-                                  " after 60s; rechecking gradient");
-            end if;
-            Clear_Warden (Holds (I).PID);
-            Holds (I).Sample_Bytes :=
-              MacOS_Bridge.Get_Process_Memory_C (Holds (I).PID);
-            Holds (I).Phase := Rechecking;
-            Holds (I).Started := Clock;
+            declare
+               Window : constant Long_Float :=
+                 Long_Float'Min (Holds (I).Hold_Seconds, 60.0);
+            begin
+               Holds (I).Total_Held := Holds (I).Total_Held + Window;
+               if System_Stable
+                 or else Holds (I).Total_Held >= Holds (I).Hold_Seconds
+               then
+                  RC := Kill_Process (Holds (I).PID, SIGCONT);
+                  if RC /= 0 then
+                     Murasama_Log.Error ("[GRACE] SIGCONT failed on pid" &
+                                         Trim_Int (Holds (I).PID) & " rc=" &
+                                         Trim_Int (RC));
+                  else
+                     Murasama_Log.Info ("[GRACE] SIGCONT pid" &
+                       Trim_Int (Holds (I).PID) &
+                       (if System_Stable then " after memory stabilized"
+                        else " after hold cap reached") &
+                       "; rechecking gradient");
+                  end if;
+                  Clear_Warden (Holds (I).PID);
+                  Holds (I).Sample_Bytes :=
+                    MacOS_Bridge.Get_Process_Memory_C (Holds (I).PID);
+                  Holds (I).Phase := Rechecking;
+                  Holds (I).Started := Clock;
+               else
+                  --  Still thrashing: stay STOPped, re-arm the warden hold
+                  --  for another bounded 60 s window and notify the user.
+                  Notify_Warden (Holds (I).PID, Holds (I).Risk_Pct);
+                  Notify_Freeze (Holds (I).PID, Holds (I).Risk_Pct, True);
+                  Holds (I).Started := Clock;
+                  Murasama_Log.Warn ("[GRACE] pid" &
+                    Trim_Int (Holds (I).PID) &
+                    " memory still unstable after " &
+                    Trim_Float (Holds (I).Total_Held) &
+                    "s frozen - extending freeze (NO KILL)");
+               end if;
+            end;
 
          elsif Holds (I).Active
            and then Holds (I).Phase = Rechecking
@@ -206,7 +296,12 @@ package body Murasama_Grace is
             end if;
             Holds (I).Gradient_MB_S := Grad;
 
-            if Grad > Murasama_Types.GRACE_MIN_GRADIENT_MB_S then
+            if System_Stable then
+               Holds (I).Active := False;
+               Murasama_Log.Info ("[GRACE] pid" & Trim_Int (Holds (I).PID) &
+                 " released: memory stable, gradient=" & Trim_Float (Grad) &
+                 " MB/s");
+            elsif Grad > Murasama_Types.GRACE_MIN_GRADIENT_MB_S then
                Holds (I).Stops := Holds (I).Stops + 1;
                Holds (I).Started := Clock;
                Holds (I).Phase := Held;

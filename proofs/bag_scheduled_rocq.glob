@@ -1,0 +1,131 @@
+DIGEST 0ed8bdcef85f71424d634d01e58e9cdf
+Fbag_scheduled_rocq
+def 11:26 <> Brute_Force_gate
+R88:91 Corelib.Init.Datatypes <> bool ind
+binder 29:31 <> bag:1
+binder 33:38 <> notChg:2
+binder 40:46 <> notSurv:3
+binder 48:54 <> notThaw:4
+binder 56:63 <> notAlarm:5
+binder 65:70 <> notCal:6
+binder 72:79 <> notNotif:7
+binder 81:84 <> wake:8
+R96:99 Corelib.Init.Datatypes <> bool ind
+R175:178 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R163:166 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R153:156 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R141:144 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R130:133 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R119:122 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R109:112 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R106:108 bag_scheduled_rocq <> bag:1 var
+R113:118 bag_scheduled_rocq <> notChg:2 var
+R123:129 bag_scheduled_rocq <> notSurv:3 var
+R134:140 bag_scheduled_rocq <> notThaw:4 var
+R145:152 bag_scheduled_rocq <> notAlarm:5 var
+R157:162 bag_scheduled_rocq <> notCal:6 var
+R167:174 bag_scheduled_rocq <> notNotif:7 var
+R179:182 bag_scheduled_rocq <> wake:8 var
+def 197:213 <> Brute_Force_fixed
+R270:273 Corelib.Init.Datatypes <> bool ind
+binder 216:218 <> bag:9
+binder 220:225 <> notChg:10
+binder 227:233 <> notSurv:11
+binder 235:241 <> notThaw:12
+binder 243:250 <> notAlarm:13
+binder 252:257 <> notCal:14
+binder 259:266 <> notNotif:15
+R278:281 Corelib.Init.Datatypes <> bool ind
+R345:348 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R335:338 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R323:326 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R312:315 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R301:304 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R291:294 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R288:290 bag_scheduled_rocq <> bag:9 var
+R295:300 bag_scheduled_rocq <> notChg:10 var
+R305:311 bag_scheduled_rocq <> notSurv:11 var
+R316:322 bag_scheduled_rocq <> notThaw:12 var
+R327:334 bag_scheduled_rocq <> notAlarm:13 var
+R339:344 bag_scheduled_rocq <> notCal:14 var
+R349:356 bag_scheduled_rocq <> notNotif:15 var
+prf 368:385 <> Brute_implies_wake
+binder 396:396 <> b:16
+binder 398:398 <> c:17
+binder 400:400 <> s:18
+binder 402:402 <> t:19
+binder 404:404 <> a:20
+binder 406:407 <> ca:21
+binder 409:409 <> n:22
+binder 411:411 <> w:23
+R456:459 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R449:451 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R416:431 bag_scheduled_rocq <> Brute_Force_gate def
+R433:433 bag_scheduled_rocq <> b:16 var
+R435:435 bag_scheduled_rocq <> c:17 var
+R437:437 bag_scheduled_rocq <> s:18 var
+R439:439 bag_scheduled_rocq <> t:19 var
+R441:441 bag_scheduled_rocq <> a:20 var
+R443:444 bag_scheduled_rocq <> ca:21 var
+R446:446 bag_scheduled_rocq <> n:22 var
+R448:448 bag_scheduled_rocq <> w:23 var
+R452:455 Corelib.Init.Datatypes <> true constr
+R461:463 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R460:460 bag_scheduled_rocq <> w:23 var
+R464:467 Corelib.Init.Datatypes <> true constr
+R513:528 bag_scheduled_rocq <> Brute_Force_gate def
+prf 693:714 <> Brute_fixed_drops_wake
+R749:752 Corelib.Init.Datatypes <> bool ind
+binder 726:726 <> b:24
+binder 728:728 <> c:25
+binder 730:730 <> s:26
+binder 732:732 <> t:27
+binder 734:734 <> a:28
+binder 736:737 <> ca:29
+binder 739:739 <> n:30
+binder 741:742 <> w1:31
+binder 744:745 <> w2:32
+R797:800 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R790:792 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R758:774 bag_scheduled_rocq <> Brute_Force_fixed def
+R776:776 bag_scheduled_rocq <> b:24 var
+R778:778 bag_scheduled_rocq <> c:25 var
+R780:780 bag_scheduled_rocq <> s:26 var
+R782:782 bag_scheduled_rocq <> t:27 var
+R784:784 bag_scheduled_rocq <> a:28 var
+R786:787 bag_scheduled_rocq <> ca:29 var
+R789:789 bag_scheduled_rocq <> n:30 var
+R793:796 Corelib.Init.Datatypes <> true constr
+R801:804 Corelib.Init.Logic <> True ind
+R854:854 Corelib.Init.Logic <> I constr
+prf 869:908 <> Brute_fixed_is_true_when_all_inputs_true
+R966:968 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R914:930 bag_scheduled_rocq <> Brute_Force_fixed def
+R932:935 Corelib.Init.Datatypes <> true constr
+R937:940 Corelib.Init.Datatypes <> true constr
+R942:945 Corelib.Init.Datatypes <> true constr
+R947:950 Corelib.Init.Datatypes <> true constr
+R952:955 Corelib.Init.Datatypes <> true constr
+R957:960 Corelib.Init.Datatypes <> true constr
+R962:965 Corelib.Init.Datatypes <> true constr
+R969:972 Corelib.Init.Datatypes <> true constr
+prf 1146:1167 <> fixed_wake_independent
+R1183:1186 Corelib.Init.Datatypes <> bool ind
+binder 1179:1179 <> w:33
+R1244:1248 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1192:1208 bag_scheduled_rocq <> Brute_Force_fixed def
+R1210:1213 Corelib.Init.Datatypes <> true constr
+R1215:1218 Corelib.Init.Datatypes <> true constr
+R1220:1223 Corelib.Init.Datatypes <> true constr
+R1225:1228 Corelib.Init.Datatypes <> true constr
+R1230:1233 Corelib.Init.Datatypes <> true constr
+R1235:1238 Corelib.Init.Datatypes <> true constr
+R1240:1243 Corelib.Init.Datatypes <> true constr
+R1249:1265 bag_scheduled_rocq <> Brute_Force_fixed def
+R1267:1270 Corelib.Init.Datatypes <> true constr
+R1272:1275 Corelib.Init.Datatypes <> true constr
+R1277:1280 Corelib.Init.Datatypes <> true constr
+R1282:1285 Corelib.Init.Datatypes <> true constr
+R1287:1290 Corelib.Init.Datatypes <> true constr
+R1292:1295 Corelib.Init.Datatypes <> true constr
+R1297:1300 Corelib.Init.Datatypes <> true constr

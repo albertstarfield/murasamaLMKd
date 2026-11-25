@@ -13,6 +13,13 @@ package Murasama_Grace is
       ML_Predicted  : Integer);
    --  Notify the UI warden with a per-PID hold file, then SIGSTOP the process.
 
+   procedure Begin_Long_Hold
+     (PID           : Interfaces.C.int;
+      Gradient_MB_S : Long_Float;
+      Total_RAM_MB  : Long_Float;
+      ML_Predicted  : Integer);
+   --  User-requested 6-hour freeze: same non-killing STOP, longer hold window.
+
    procedure Service;
    --  Every cycle: after 60 s SIGCONT, re-measure the gradient on the next
    --  one-second cycle, and STOP again if it is still climbing.

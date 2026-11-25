@@ -1,0 +1,59 @@
+DIGEST 50e55c17c80b17fbec5c2ae34660e294
+Fgrace_timeout
+R252:254 Stdlib.Init.Nat <> <> lib
+R256:259 Stdlib.Bool.Bool <> <> lib
+R261:265 Stdlib.Arith.Arith <> <> lib
+def 280:291 <> graceTimeout
+R295:297 Corelib.Init.Datatypes <> nat ind
+def 319:332 <> graceWarningOK
+R345:347 Corelib.Init.Datatypes <> nat ind
+binder 335:341 <> timeout:1
+R367:370 Corelib.Init.Datatypes <> bool ind
+binder 351:363 <> async_enqueue:2
+R375:378 Corelib.Init.Datatypes <> bool ind
+R385:388 Corelib.Init.Datatypes <> andb def
+R405:411 Stdlib.Arith.PeanoNat Nat eqb def
+R413:419 grace_timeout <> timeout:1 var
+R421:432 grace_timeout <> graceTimeout def
+R390:402 grace_timeout <> async_enqueue:2 var
+prf 445:458 <> timeout_is_120
+R474:476 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R462:473 grace_timeout <> graceTimeout def
+prf 516:536 <> async_queue_preserved
+R563:565 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R540:553 grace_timeout <> graceWarningOK def
+R559:562 Corelib.Init.Datatypes <> true constr
+R566:569 Corelib.Init.Datatypes <> true constr
+prf 669:690 <> dropping_enqueue_fails
+R718:720 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R694:707 grace_timeout <> graceWarningOK def
+R713:717 Corelib.Init.Datatypes <> false constr
+R721:725 Corelib.Init.Datatypes <> false constr
+prf 828:846 <> wrong_timeout_fails
+binder 857:857 <> t:3
+R868:871 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R861:864 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R860:860 grace_timeout <> t:3 var
+R893:895 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R872:885 grace_timeout <> graceWarningOK def
+R887:887 grace_timeout <> t:3 var
+R889:892 Corelib.Init.Datatypes <> true constr
+R896:900 Corelib.Init.Datatypes <> false constr
+R931:944 grace_timeout <> graceWarningOK def
+R947:958 grace_timeout <> graceTimeout def
+R973:979 Stdlib.Arith.PeanoNat Nat eqb def
+R1027:1036 Stdlib.Arith.PeanoNat Nat eqb_eq thm
+prf 1146:1168 <> timeout_eq_120_required
+binder 1179:1179 <> t:4
+binder 1181:1181 <> b:5
+R1209:1212 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1202:1204 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1184:1197 grace_timeout <> graceWarningOK def
+R1199:1199 grace_timeout <> t:4 var
+R1201:1201 grace_timeout <> b:5 var
+R1205:1208 Corelib.Init.Datatypes <> true constr
+R1214:1216 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1213:1213 grace_timeout <> t:4 var
+R1252:1265 grace_timeout <> graceWarningOK def
+R1268:1279 grace_timeout <> graceTimeout def
+R1324:1333 Stdlib.Arith.PeanoNat Nat eqb_eq thm

@@ -153,4 +153,42 @@ package body Murasama_Types is
       return Elapsed >= Duration (GRACE_HOLD_SECONDS);
    end Grace_Expired;
 
+   function Grace_Release_Allowed
+     (Grad_Above_Gate : Boolean;
+      Stable_Samples  : Natural;
+      Long_Hold_Active : Boolean) return Boolean
+   is
+   begin
+      --  CONT only when the process is quiet for the whole stability window
+      --  AND no user-requested long freeze is still in force.
+      return not Grad_Above_Gate
+        and then Stable_Samples >= GRACE_STABLE_SAMPLES
+        and then not Long_Hold_Active;
+   end Grace_Release_Allowed;
+
+   function Grace_Window_Within_Limit
+     (Hold_Seconds : Long_Float) return Boolean
+   is
+   begin
+      return Hold_Seconds >= 0.0
+        and then Hold_Seconds <= Long_Float (GRACE_MAX_WINDOW_SECONDS);
+   end Grace_Window_Within_Limit;
+
+   function Is_Early_Stress
+     (Free_MB, Total_RAM_MB : Long_Float;
+      Pressure_Level, ML_Predicted : Integer) return Boolean
+   is
+   begin
+      return Pressure_Level >= 3
+        or else Free_MB < CRITICAL_FREE_MB
+        or else (Free_MB * Long_Float (EARLY_STRESS_FREE_DIVISOR)
+                 <= Total_RAM_MB
+                 and then (Pressure_Level >= 2 or else ML_Predicted >= 4));
+   end Is_Early_Stress;
+
+   function Should_Skip_Nonessential (Stressed : Boolean) return Boolean is
+   begin
+      return Stressed;
+   end Should_Skip_Nonessential;
+
 end Murasama_Types;

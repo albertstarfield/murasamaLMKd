@@ -1,0 +1,48 @@
+DIGEST 9adab75ec85a7b74f91468d3bcc0f9ef
+Fearly_stress
+R27:32 Stdlib.ZArith.ZArith <> <> lib
+def 67:77 <> earlyStress
+R98:98 Corelib.Numbers.BinNums <> Z ind
+binder 80:83 <> free:1
+binder 85:89 <> total:2
+binder 91:91 <> p:3
+binder 93:94 <> ml:4
+R103:106 Corelib.Init.Datatypes <> bool ind
+R116:120 Stdlib.ZArith.BinInt Z geb def
+R122:122 early_stress <> p:3 var
+R146:150 Stdlib.ZArith.BinInt Z ltb def
+R152:155 early_stress <> free:1 var
+R181:185 Stdlib.ZArith.BinInt Z leb def
+R192:194 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R188:191 early_stress <> free:1 var
+R198:202 early_stress <> total:2 var
+R278:282 Corelib.Init.Datatypes <> false constr
+R229:232 Corelib.Init.Datatypes <> ::bool_scope:x_'||'_x not
+R220:224 Stdlib.ZArith.BinInt Z geb def
+R226:226 early_stress <> p:3 var
+R233:237 Stdlib.ZArith.BinInt Z geb def
+R239:240 early_stress <> ml:4 var
+R265:269 Corelib.Init.Datatypes <> false constr
+R255:258 Corelib.Init.Datatypes <> true constr
+R166:169 Corelib.Init.Datatypes <> true constr
+R131:134 Corelib.Init.Datatypes <> true constr
+prf 294:316 <> pressure_three_suffices
+R345:347 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R320:330 early_stress <> earlyStress def
+R348:351 Corelib.Init.Datatypes <> true constr
+prf 387:415 <> critical_free_at_pressure_one
+R444:446 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R419:429 early_stress <> earlyStress def
+R447:450 Corelib.Init.Datatypes <> true constr
+prf 486:509 <> low_free_at_pressure_two
+R539:541 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R513:523 early_stress <> earlyStress def
+R542:545 Corelib.Init.Datatypes <> true constr
+prf 581:602 <> boundary_critical_free
+R631:633 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R606:616 early_stress <> earlyStress def
+R634:638 Corelib.Init.Datatypes <> false constr
+prf 674:695 <> counterexample_healthy
+R726:728 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R699:709 early_stress <> earlyStress def
+R729:733 Corelib.Init.Datatypes <> false constr

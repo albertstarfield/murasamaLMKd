@@ -32,6 +32,12 @@ procedure Murasamalmk_Daemon is
    function Errno_Location return access constant int;
    pragma Import (C, Errno_Location, "__error");
 
+   --  PRIO_PROCESS=0, id=0 means "self". The plist Nice -20 is not always
+   --  inherited by a kickstarted daemon, so claim it explicitly at startup:
+   --  under memory starvation the scheduler must favour this short loop.
+   function Set_Priority_C (Id_Type : int; Id : int; Prio : int) return int;
+   pragma Import (C, Set_Priority_C, "setpriority");
+
    -- errno values used by kill(pid, 0) disambiguation (sys/errno.h)
    EPERM : constant int := 1;  -- Operation not permitted: process EXISTS,
                                -- but our uid lacks signal permission
@@ -44,6 +50,15 @@ procedure Murasamalmk_Daemon is
 
    type Async_Command_Runner_Access is access Async_Command_Runner;
    Runner : Async_Command_Runner_Access;
+
+   --  Dedicated long-lived popup runner. The normal runner has a hard 2 s
+   --  C timeout; a 120 s zenity dialog must not be killed mid-read. This
+   --  task is independent so Enqueue on both runners never blocks the loop.
+   task type Async_Popup_Runner is
+      entry Enqueue (Cmd : String);
+   end Async_Popup_Runner;
+   type Async_Popup_Runner_Access is access Async_Popup_Runner;
+   Popup_Runner : Async_Popup_Runner_Access;
 
    -- DERIVATION:
    --   AXIOMS: A1) notification commands may arrive at any instant from any
@@ -143,6 +158,48 @@ procedure Murasamalmk_Daemon is
          end if;
       end loop;
    end Async_Command_Runner;
+
+   task body Async_Popup_Runner is
+      type String_Access is access String;
+      Command_Queue_Size : constant := 32;
+      Queue : array (1 .. Command_Queue_Size) of String_Access := (others => null);
+      Head  : Positive := 1;
+      Tail  : Positive := 1;
+      Count : Natural := 0;
+      procedure Free_String is new Ada.Unchecked_Deallocation
+        (Object => String, Name => String_Access);
+   begin
+      loop
+         select
+            accept Enqueue (Cmd : String) do
+               if Count < Command_Queue_Size then
+                  Queue (Tail) := new String'(Cmd);
+                  Tail := (if Tail = Command_Queue_Size then 1 else Tail + 1);
+                  Count := Count + 1;
+               end if;
+            end Enqueue;
+         or
+            delay Duration (POLL_INTERVAL_MS) / 1000.0;
+         end select;
+
+         if Count > 0 then
+            declare
+               Cmd_To_Run : constant String := Queue (Head).all;
+               Slot       : String_Access := Queue (Head);
+            begin
+               Queue (Head) := null;
+               Head := (if Head = Command_Queue_Size then 1 else Head + 1);
+               Count := Count - 1;
+               Free_String (Slot);
+               declare
+                  C_Cmd : constant char_array := To_C (Cmd_To_Run);
+               begin
+                  Run_System_Command_Popup_C (C_Cmd);
+               end;
+            end;
+         end if;
+      end loop;
+   end Async_Popup_Runner;
 
    -- Global mitigation state (protected for task safety)
    protected Mitigation_State is
@@ -360,10 +417,107 @@ procedure Murasamalmk_Daemon is
       end;
    end Queue_Thrashing_Summary_Notification;
 
-   -- Graceful-pause notification: the process is NOT killed. The user gets
-   -- the measured gradient and a predicted risk percentage, and can decide.
+   WHITELIST_DIR    : constant String :=
+     "/usr/local/murasamaLMKd/run/user_whitelist";
+   WHITELIST_REQUEST : constant String := WHITELIST_DIR & "/pending";
+
+   function Time_C (T : access Long_Long_Integer) return Long_Long_Integer;
+   pragma Import (C, Time_C, "time");
+
+   function Trim_Int_LL (V : Long_Long_Integer) return String is
+      S : constant String := Long_Long_Integer'Image (V);
+   begin
+      return S (S'First + 1 .. S'Last);
+   end Trim_Int_LL;
+
+   function Trim_PID (PID : PID_T) return String is
+      S : constant String := PID_T'Image (PID);
+   begin
+      return S (S'First + 1 .. S'Last);
+   end Trim_PID;
+
+   function Whitelist_Path (PID : PID_T) return String is
+   begin
+      return WHITELIST_DIR & "/whitelist_" & Trim_PID (PID);
+   end Whitelist_Path;
+
+   function Is_Whitelisted (PID : PID_T) return Boolean is
+      F      : Ada.Text_IO.File_Type;
+      Path   : constant String := Whitelist_Path (PID);
+      Expiry : Long_Long_Integer := 0;
+      Now_S  : aliased Long_Long_Integer := 0;
+   begin
+      if PID <= 0 or else not Ada.Directories.Exists (Path) then
+         return False;
+      end if;
+      begin
+         Ada.Text_IO.Open (F, Ada.Text_IO.In_File, Path);
+         Expiry := Long_Long_Integer'Value (Ada.Text_IO.Get_Line (F));
+         Ada.Text_IO.Close (F);
+      exception
+         when others =>
+            if Ada.Text_IO.Is_Open (F) then
+               Ada.Text_IO.Close (F);
+            end if;
+            return False;
+      end;
+      Now_S := Time_C (Now_S'Access);
+      return Expiry > Now_S;
+   end Is_Whitelisted;
+
+   --  Popup button handler: a request file written by the zenity command is
+   --  consumed once per second; it creates a 6h no-kill record and starts a
+   --  6h non-killing freeze through the grace manager.
+   procedure Service_Whitelist (Total_RAM_MB : Long_Float) is
+      F       : Ada.Text_IO.File_Type;
+      Out_F   : Ada.Text_IO.File_Type;
+      PID     : PID_T := 0;
+      Expiry  : Long_Long_Integer := 0;
+      Now_S   : aliased Long_Long_Integer := 0;
+   begin
+      if not Ada.Directories.Exists (WHITELIST_REQUEST) then
+         return;
+      end if;
+      begin
+         Ada.Text_IO.Open (F, Ada.Text_IO.In_File, WHITELIST_REQUEST);
+         PID := PID_T'Value (Ada.Text_IO.Get_Line (F));
+         Ada.Text_IO.Close (F);
+      exception
+         when others =>
+            if Ada.Text_IO.Is_Open (F) then
+               Ada.Text_IO.Close (F);
+            end if;
+            Ada.Directories.Delete_File (WHITELIST_REQUEST);
+            return;
+      end;
+      Ada.Directories.Delete_File (WHITELIST_REQUEST);
+      if PID <= 0 then
+         return;
+      end if;
+      if not Ada.Directories.Exists (WHITELIST_DIR) then
+         Ada.Directories.Create_Path (WHITELIST_DIR);
+      end if;
+      Now_S := Time_C (Now_S'Access);
+      Expiry := Now_S + Long_Long_Integer (Murasama_Types.WHITELIST_HOLD_SECONDS);
+      Ada.Text_IO.Create (Out_F, Ada.Text_IO.Out_File, Whitelist_Path (PID));
+      Ada.Text_IO.Put_Line (Out_F, Trim_Int_LL (Expiry));
+      Ada.Text_IO.Close (Out_F);
+      Murasama_Grace.Begin_Long_Hold
+        (PID, 0.0, Total_RAM_MB, 0);
+      Murasama_Log.Warn ("[WHITELIST] pid" & Trim_PID (PID) &
+        " whitelisted 6h no-kill + frozen 6h by user choice");
+   exception
+      when E : others =>
+         Murasama_Log.Error ("[WHITELIST] request failed: " &
+                             Ada.Exceptions.Exception_Information (E));
+   end Service_Whitelist;
+
+   -- Graceful-pause notification: the process is NOT killed. The dialog stays
+   -- up for 120 s in its own long-timeout runner, so the user can read it and
+   -- choose Continue or Whitelist 6h; the 100 ms loop never blocks.
    procedure Queue_Zenity_Grace_Warning
-     (Target_Name : String; Risk_Pct, Gradient_MB_S : Long_Float)
+     (Target_Name : String; Risk_Pct, Gradient_MB_S : Long_Float;
+      PID : PID_T)
    is
       UID : constant UID_T := Get_Console_UID_C;
    begin
@@ -373,16 +527,31 @@ procedure Murasamalmk_Daemon is
       declare
          UID_Str     : constant String := UID_T'Image (UID);
          UID_Trimmed : constant String := UID_Str (UID_Str'First + 1 .. UID_Str'Last);
+         PID_Str     : constant String := Trim_PID (PID);
          Msg         : constant String :=
            Target_Name & " is allocating memory at " &
            Long_Float'Image (Gradient_MB_S) & " MB/s. Predicted risk: " &
-           Long_Float'Image (Risk_Pct) & "%. It was PAUSED for 60s, not killed. Continue?";
-         Cmd         : constant String := "launchctl asuser " & UID_Trimmed &
-           " /opt/homebrew/bin/zenity --warning --text=" &
+           Long_Float'Image (Risk_Pct) &
+           "%. PAUSED, not killed. Continue? Whitelist 6h => no-kill + freeze 6h.";
+         --  launchctl asuser does not inherit DISPLAY from the GUI session;
+         --  zenity therefore failed silently. Recover it from launchd in the
+         --  user's own shell before exec'ing the dialog.
+         Script : constant String :=
+           "D=$(/bin/launchctl getenv DISPLAY); export DISPLAY=${D:-:0}; " &
+           "exec /opt/homebrew/bin/zenity --warning --text=" &
            Shell_Quote (Msg) & " --title=" &
-           Shell_Quote ("Murasama LMKd: Graceful Pause (no kill)") & " --width=400";
+           Shell_Quote ("Murasama LMKd: Graceful Pause (no kill)") &
+           " --width=440 --timeout=" &
+           Trim_Int_LL (Long_Long_Integer (Murasama_Types.POPUP_TIMEOUT_SECONDS)) &
+           " --ok-label=" & Shell_Quote ("Continue") &
+           " --cancel-label=" & Shell_Quote ("Whitelist 6h");
+         Cmd    : constant String := "launchctl asuser " & UID_Trimmed &
+           " /bin/sh -c " & Shell_Quote (Script) &
+           "; if [ $? -eq 1 ]; then /bin/mkdir -p " & Shell_Quote (WHITELIST_DIR) &
+           " && /usr/bin/printf '%s\n' " & PID_Str & " > " &
+           Shell_Quote (WHITELIST_REQUEST) & "; fi";
       begin
-         Runner.Enqueue (Cmd);
+         Popup_Runner.Enqueue (Cmd);
       end;
    end Queue_Zenity_Grace_Warning;
 
@@ -610,6 +779,9 @@ procedure Murasamalmk_Daemon is
    --  Machine RAM is needed by the grace-risk predicate inside the nested
    --  bloodshed handler, so it must be declared before that subprogram.
    Total_RAM_MB_Global : Long_Float := 0.0;
+   Early_Stress_Active : Boolean := False;
+   Last_Early_Action   : Time := Clock;
+   Last_Priority_Reassert : Time := Clock;
 
    -- Bloodshed Handler
    -- DERIVATION:
@@ -631,6 +803,87 @@ procedure Murasamalmk_Daemon is
    --   Space: TOP_N_PROCESSES-sized arrays, O(1) aux state
    --   Hardware Assumptions: proc_pidinfo resident size stable enough over
    --     100ms for meaningful rate ranking
+   --  Early, syscall-free preemption: one 50 ms gradient window over the top
+   --  footprints. It never kills and runs only once per 10 s cooldown, so its
+   --  worst-case CPU cost is bounded and far below the full bloodshed loop.
+   procedure Handle_Early_Stress
+     (Page_Size : UINT64_T; ML_Prediction : Integer)
+   is
+      Pids  : PID_Array (int(1) .. int(TOP_N_PROCESSES)) := (others => 0);
+      Before : UINT64_Array (int(1) .. int(TOP_N_PROCESSES)) := (others => 0);
+      Count : int;
+      Best_PID : PID_T := 0;
+      Best_Grad : Long_Float := 0.0;
+      Window_S : constant Long_Float :=
+        Long_Float (Murasama_Types.EARLY_GRADIENT_SAMPLE_MS) / 1000.0;
+      Free_MB_Now : Long_Float;
+   begin
+      Free_MB_Now := Long_Float (Get_Free_MB_C (Page_Size));
+      Count := Get_Top_Processes_By_Footprint_C
+        (Pids, Before, int(TOP_N_PROCESSES), int(0));
+      if Count <= 0 then
+         Murasama_Log.Warn ("[EARLY STRESS] top-footprint scan returned no candidates");
+         return;
+      end if;
+
+      for I in int(1) .. Count loop
+         Before (I) := Get_Process_Memory_C (Pids (I));
+      end loop;
+      delay To_Duration (Milliseconds (Murasama_Types.EARLY_GRADIENT_SAMPLE_MS));
+      for I in int(1) .. Count loop
+         declare
+            After_Bytes : constant UINT64_T := Get_Process_Memory_C (Pids (I));
+            Grad : constant Long_Float :=
+              (Long_Float (After_Bytes) - Long_Float (Before (I)))
+              / 1024.0 / 1024.0 / Window_S;
+         begin
+            if Grad > Best_Grad and then Pids (I) > 0 then
+               Best_Grad := Grad;
+               Best_PID := Pids (I);
+            end if;
+         end;
+      end loop;
+
+      if Best_PID = 0 or else Best_Grad <= Murasama_Types.GRACE_MIN_GRADIENT_MB_S then
+         Murasama_Log.Info ("[EARLY STRESS] no gradient above " &
+           Long_Float'Image (Murasama_Types.GRACE_MIN_GRADIENT_MB_S) & " MB/s");
+         return;
+      end if;
+
+      if Murasama_Types.Should_Grace (Best_Grad, Free_MB_Now, ML_Prediction)
+        and then not Is_Whitelisted (Best_PID)
+      then
+         declare
+            Risk : constant Long_Float :=
+              Murasama_Grace.Risk_For (Best_Grad, Total_RAM_MB_Global);
+            Name_C : char_array (size_t(1) .. size_t(MAX_NAME_LEN)) :=
+              (others => Interfaces.C.nul);
+         begin
+            Get_Process_Name_C (Best_PID, Name_C, int(MAX_NAME_LEN));
+            Murasama_Grace.Begin_Hold
+              (Best_PID, Best_Grad, Total_RAM_MB_Global, ML_Prediction);
+            declare
+               N : constant String := Interfaces.C.To_Ada (Name_C, Trim_Nul => True);
+            begin
+               if N'Length > 0 then
+                  Queue_Zenity_Grace_Warning (N, Risk, Best_Grad, Best_PID);
+               end if;
+            end;
+            Murasama_Log.Warn ("[EARLY STRESS] preemptive pause of pid" &
+              PID_T'Image (Best_PID) & " gradient=" &
+              Long_Float'Image (Best_Grad) & " MB/s risk=" &
+              Long_Float'Image (Risk) & "% (NO KILL)");
+         end;
+      else
+         Murasama_Log.Info ("[EARLY STRESS] highest gradient " &
+           Long_Float'Image (Best_Grad) & " MB/s below grace gate");
+      end if;
+   exception
+      when E : others =>
+         Murasama_Log.Error ("[EARLY STRESS] cycle failed: " &
+                             Ada.Exceptions.Exception_Information (E));
+   end Handle_Early_Stress;
+
    procedure Handle_Bloodshed
      (Trigger_Reason : String;
       Page_Size      : UINT64_T;
@@ -813,6 +1066,7 @@ procedure Murasamalmk_Daemon is
                               if Is_System_Process_C (T_Path) /= 0
                                 or else Murasama_Guard.Is_Protected_Path
                                   (To_Ada (T_Path, Trim_Nul => True))
+                                or else Is_Whitelisted (T_PID)
                               then
                                  Ada.Text_IO.Put_Line ("[SKIP] PID " & PID_T'Image (T_PID) & " (" &
                                    T_Name & ") is a protected system process. Skipping.");
@@ -841,7 +1095,7 @@ procedure Murasamalmk_Daemon is
                                          (T_PID, Rates (Target_Idx),
                                           Total_RAM_MB_Global, ML_Prediction);
                                        Queue_Zenity_Grace_Warning
-                                         (T_Name, Risk, Rates (Target_Idx));
+                                         (T_Name, Risk, Rates (Target_Idx), T_PID);
                                        Ada.Text_IO.Put_Line
                                          ("[GRACE] paused PID " & PID_T'Image (T_PID) &
                                           " instead of killing it; risk=" &
@@ -1289,8 +1543,19 @@ begin
    -- during initialization is still honored by the main-loop poll.
    Install_Shutdown_Handlers_C;
 
+   -- Claim real-time scheduling priority explicitly. The plist asks for
+   -- Nice -20 but a kickstarted process may inherit nice 0 (observed), which
+   -- is fatal when the machine is starved and must react in <100 ms.
+   if Set_Priority_C (0, 0, -20) /= 0 then
+      Murasama_Log.Warn ("setpriority(PRIO_PROCESS, self, -20) failed; " &
+                         "relying on launchd Nice setting");
+   else
+      Murasama_Log.Info ("Daemon priority set to -20 for stress responsiveness");
+   end if;
+
    -- Initialize async runner
    Runner := new Async_Command_Runner;
+   Popup_Runner := new Async_Popup_Runner;
 
    -- Create the root-owned private runtime directory used for sidecar spawn
    -- artifacts (CWE-377 fix — never /tmp).
@@ -1389,6 +1654,46 @@ begin
       declare
          Now : Time := Clock;
          Elapsed : constant Duration := To_Duration (Now - Last_Time);
+         --  Pure test on values already sampled this iteration: zero extra
+         --  syscalls, so early detection costs no measurable CPU.
+         Early_Stress : constant Boolean :=
+           (if Total_RAM_MB_Global >= 1.0
+              and then Current_Free_MB >= 0.0
+              and then Current_Free_MB <= 1.0E9
+            then Murasama_Types.Is_Early_Stress
+                   (Current_Free_MB, Total_RAM_MB_Global,
+                    Current_Pressure, ML_Predicted_Pressure)
+            else False);
+      begin
+         Early_Stress_Active := Early_Stress;
+         --  Consume whitelist requests on every 100 ms tick. When absent
+         --  this is one stat() call; a just-clicked Cancel is honoured within
+         --  one poll instead of up to a full second (refutation fix).
+         Service_Whitelist (Total_RAM_MB_Global);
+         --  launchd applies Nice/ProcessType AFTER our startup setpriority,
+         --  resetting nice to 0 (observed). Re-assert -20 every 30 s: one
+         --  syscall per 3000 loop iterations, negligible CPU cost.
+         if Now >= Last_Priority_Reassert + Seconds (30) then
+            if Set_Priority_C (0, 0, -20) = 0 then
+               Last_Priority_Reassert := Now;
+            else
+               Murasama_Log.Warn ("periodic setpriority(-20) failed");
+            end if;
+         end if;
+         if Early_Stress_Active
+           and then not Mitigation_State.Is_Mitigating
+           and then Now >= Last_Early_Action +
+             Seconds (Murasama_Types.EARLY_ACTION_COOLDOWN_S)
+         then
+            Handle_Early_Stress (Page_Size, ML_Predicted_Pressure);
+            Last_Early_Action := Now;
+         end if;
+
+         --  Defer nonessential I/O while stressed: the slow EARU volume and
+         --  the 10-minute leak scan must never delay the reaction path.
+         declare
+            Skip_Nonessential : constant Boolean :=
+              Murasama_Types.Should_Skip_Nonessential (Early_Stress);
          Elapsed_Secs : constant Long_Float := Long_Float (Elapsed);
          Wired_Velocity : Long_Float := 0.0;
       begin
@@ -1518,7 +1823,9 @@ begin
          end if;
 
          -- Export JSON Telemetry (Throttled to 2s to avoid high I/O churn)
-         if Now >= Last_Telemetry_Time + Seconds (2) then
+         if not Skip_Nonessential
+           and then Now >= Last_Telemetry_Time + Seconds (2)
+         then
             declare
                F_Start, P_Start, D_Start : UINT64_T;
                F_End, P_End, D_End : UINT64_T;
@@ -1575,7 +1882,10 @@ begin
          --   [1] XNU osfmk/kern/memorystatus.c — pressure levels 1/2/4
          --   [2] Apple man sysctl(3) — vm.swapusage
          --   [3] Apple proc_pid_rusage(3) — ri_phys_footprint
-         if Now >= Last_Mem_Monitor_Time + Milliseconds (MEM_MONITOR_INTERVAL_MS) then
+         if not Skip_Nonessential
+           and then Now >= Last_Mem_Monitor_Time
+             + Milliseconds (MEM_MONITOR_INTERVAL_MS)
+         then
             declare
                Swap_Total_MB : double := 0.0;
                Swap_Used_MB  : double := 0.0;
@@ -1661,8 +1971,10 @@ begin
          -- T2 structure mirrors the MEM MONITOR block above: the callee
          -- itself never raises (its THEOREM 2), the wiring handler is
          -- belt+braces, and the timestamp ALWAYS advances after the block.
-         if Now >= Last_Leak_Check_Time +
-             Milliseconds (LEAK_CHECK_INTERVAL_MS) then
+         if not Skip_Nonessential
+           and then Now >= Last_Leak_Check_Time +
+             Milliseconds (LEAK_CHECK_INTERVAL_MS)
+         then
             begin
                Murasama_Leak_Killer.Check_And_Kill;
             exception
@@ -1752,6 +2064,7 @@ begin
                 end if;
              end if;
          end;
+      end;
 
        -- Watchdog: treat any iteration longer than POLL_INTERVAL_MS as a fault.
        declare

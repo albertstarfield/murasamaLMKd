@@ -867,6 +867,12 @@ void run_system_command_c(const char *cmd) {
     run_system_command_with_timeout(cmd, 2000);
 }
 
+/* Long-lived UI popup: a 120 s zenity dialog plus shutdown slack. Called
+   only from the dedicated async popup runner, never from the 100 ms loop. */
+void run_system_command_popup_c(const char *cmd) {
+    run_system_command_with_timeout(cmd, 125000);
+}
+
 void restore_blacklisted_priorities_c(void) {
     /* Restore normal scheduling for all deprioritized processes when memory pressure is gone.
        Uses taskpolicy -B to clear background scheduling class. */

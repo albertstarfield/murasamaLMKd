@@ -1,0 +1,84 @@
+DIGEST d010e4989c8d53dcb7cb9ff175b302dd
+Frestart_gate
+R15:18 Stdlib.Bool.Bool <> <> lib
+rec 29:38 <> RestartObs
+proj 47:64 <> launchctlRestarted
+proj 76:87 <> binaryStaged
+proj 99:111 <> daemonRunning
+R68:71 Corelib.Init.Datatypes <> bool ind
+R91:94 Corelib.Init.Datatypes <> bool ind
+R115:118 Corelib.Init.Datatypes <> bool ind
+def 135:148 <> restartedClaim
+R155:164 restart_gate <> RestartObs rec
+binder 151:151 <> o:5
+R169:172 Corelib.Init.Datatypes <> bool ind
+R217:220 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R199:202 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R179:196 restart_gate <> launchctlRestarted proj
+R198:198 restart_gate <> o:5 var
+R203:214 restart_gate <> binaryStaged proj
+R216:216 restart_gate <> o:5 var
+R221:233 restart_gate <> daemonRunning proj
+R235:235 restart_gate <> o:5 var
+def 250:258 <> obs190952
+R266:283 restart_gate <> launchctlRestarted proj
+R294:305 restart_gate <> binaryStaged proj
+R316:328 restart_gate <> daemonRunning proj
+R288:291 Corelib.Init.Datatypes <> true constr
+R310:313 Corelib.Init.Datatypes <> true constr
+R333:336 Corelib.Init.Datatypes <> true constr
+prf 349:358 <> claim_true
+R386:388 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R362:375 restart_gate <> restartedClaim def
+R377:385 restart_gate <> obs190952 def
+R389:392 Corelib.Init.Datatypes <> true constr
+prf 427:449 <> missing_launchctl_false
+binder 460:460 <> o:6
+R493:496 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R485:487 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R465:482 restart_gate <> launchctlRestarted proj
+R484:484 restart_gate <> o:6 var
+R488:492 Corelib.Init.Datatypes <> false constr
+R513:515 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R497:510 restart_gate <> restartedClaim def
+R512:512 restart_gate <> o:6 var
+R516:520 Corelib.Init.Datatypes <> false constr
+R549:562 restart_gate <> restartedClaim def
+prf 601:620 <> missing_binary_false
+binder 631:631 <> o:7
+R658:661 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R650:652 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R636:647 restart_gate <> binaryStaged proj
+R649:649 restart_gate <> o:7 var
+R653:657 Corelib.Init.Datatypes <> false constr
+R678:680 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R662:675 restart_gate <> restartedClaim def
+R677:677 restart_gate <> o:7 var
+R681:685 Corelib.Init.Datatypes <> false constr
+R714:727 restart_gate <> restartedClaim def
+R751:768 restart_gate <> launchctlRestarted proj
+R784:796 restart_gate <> daemonRunning proj
+prf 827:846 <> missing_daemon_false
+binder 857:857 <> o:8
+R885:888 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R877:879 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R862:874 restart_gate <> daemonRunning proj
+R876:876 restart_gate <> o:8 var
+R880:884 Corelib.Init.Datatypes <> false constr
+R905:907 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R889:902 restart_gate <> restartedClaim def
+R904:904 restart_gate <> o:8 var
+R908:912 Corelib.Init.Datatypes <> false constr
+R941:954 restart_gate <> restartedClaim def
+R978:995 restart_gate <> launchctlRestarted proj
+R1011:1022 restart_gate <> binaryStaged proj
+prf 1053:1074 <> restart_is_conjunction
+R1173:1175 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1080:1093 restart_gate <> restartedClaim def
+R1098:1115 restart_gate <> launchctlRestarted proj
+R1127:1138 restart_gate <> binaryStaged proj
+R1149:1161 restart_gate <> daemonRunning proj
+R1120:1124 Corelib.Init.Datatypes <> false constr
+R1143:1146 Corelib.Init.Datatypes <> true constr
+R1166:1169 Corelib.Init.Datatypes <> true constr
+R1176:1180 Corelib.Init.Datatypes <> false constr

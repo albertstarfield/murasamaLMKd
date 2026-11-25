@@ -1,0 +1,11 @@
+DIGEST bf1da8d97ef4927c7822ef2c09b48506
+Fpopup_whitelist
+R27:32 Stdlib.ZArith.ZArith <> <> lib
+prf 64:91 <> popup_runner_outlives_dialog
+R101:103 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R107:109 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+prf 150:171 <> whitelist_is_six_hours
+R180:182 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R184:186 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+prf 227:256 <> long_hold_exceeds_normal_grace
+R265:267 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not

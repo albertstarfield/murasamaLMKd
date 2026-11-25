@@ -1,0 +1,70 @@
+DIGEST 3bdf6dd4cf28073ea78ab30f159a92b7
+Fstability_policy
+R174:176 Stdlib.Init.Nat <> <> lib
+R178:181 Stdlib.Bool.Bool <> <> lib
+R183:185 Stdlib.micromega.Lia <> <> lib
+R187:194 Stdlib.Arith.PeanoNat <> <> lib
+R196:206 Stdlib.Arith.Compare_dec <> <> lib
+def 221:232 <> freezeWindow
+R242:244 Corelib.Init.Datatypes <> nat ind
+binder 235:238 <> hold:1
+R249:251 Corelib.Init.Datatypes <> nat ind
+R256:262 Stdlib.Arith.PeanoNat Nat min def
+R264:267 stability_policy <> hold:1 var
+def 285:295 <> stillFrozen
+R313:316 Corelib.Init.Datatypes <> bool ind
+binder 298:309 <> systemStable:2
+R336:338 Corelib.Init.Datatypes <> nat ind
+binder 320:328 <> totalHeld:3
+binder 330:332 <> cap:4
+R343:346 Corelib.Init.Datatypes <> bool ind
+R356:367 stability_policy <> systemStable:2 var
+R397:400 Stdlib.Arith.PeanoNat <> ::nat_scope:x_'<?'_x not
+R388:396 stability_policy <> totalHeld:3 var
+R401:403 stability_policy <> cap:4 var
+R420:424 Corelib.Init.Datatypes <> false constr
+R410:413 Corelib.Init.Datatypes <> true constr
+R374:378 Corelib.Init.Datatypes <> false constr
+def 439:452 <> releaseAllowed
+R467:470 Corelib.Init.Datatypes <> bool ind
+binder 455:463 <> gradAbove:5
+R488:490 Corelib.Init.Datatypes <> nat ind
+binder 474:484 <> quietProbes:6
+R507:510 Corelib.Init.Datatypes <> bool ind
+binder 496:503 <> longHold:7
+R515:518 Corelib.Init.Datatypes <> bool ind
+R525:528 Corelib.Init.Datatypes <> andb def
+R598:601 Corelib.Init.Datatypes <> negb def
+R603:610 stability_policy <> longHold:7 var
+R531:534 Corelib.Init.Datatypes <> andb def
+R554:560 Stdlib.Arith.PeanoNat Nat eqb def
+R565:571 Stdlib.Arith.PeanoNat Nat min def
+R573:583 stability_policy <> quietProbes:6 var
+R537:540 Corelib.Init.Datatypes <> negb def
+R542:550 stability_policy <> gradAbove:5 var
+prf 621:632 <> window_le_60
+binder 643:646 <> hold:8
+R666:669 Corelib.Init.Peano <> ::nat_scope:x_'<='_x not
+R649:660 stability_policy <> freezeWindow def
+R662:665 stability_policy <> hold:8 var
+R701:712 stability_policy <> freezeWindow def
+def 734:752 <> full_hold_is_capped
+R774:776 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R756:767 stability_policy <> freezeWindow def
+prf 825:843 <> thrash_keeps_frozen
+binder 854:858 <> total:9
+binder 860:862 <> cap:10
+R876:881 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R870:872 Corelib.Init.Peano <> ::nat_scope:x_'<'_x not
+R865:869 stability_policy <> total:9 var
+R873:875 stability_policy <> cap:10 var
+R909:911 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R882:892 stability_policy <> stillFrozen def
+R894:898 Corelib.Init.Datatypes <> false constr
+R900:904 stability_policy <> total:9 var
+R906:908 stability_policy <> cap:10 var
+R912:915 Corelib.Init.Datatypes <> true constr
+R954:964 stability_policy <> stillFrozen def
+R991:994 Stdlib.Arith.PeanoNat <> ::nat_scope:x_'<?'_x not
+R1041:1045 Corelib.Init.Logic <> proj2 thm
+R1048:1058 Stdlib.Arith.PeanoNat Nat ltb_nlt thm

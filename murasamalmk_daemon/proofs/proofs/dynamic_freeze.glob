@@ -1,0 +1,50 @@
+DIGEST 12d2ab1fc7d1e9be6fdec2b760ac0dad
+Fdynamic_freeze
+R27:32 Stdlib.ZArith.ZArith <> <> lib
+R34:36 Stdlib.micromega.Lia <> <> lib
+def 71:76 <> stable
+R98:98 Corelib.Numbers.BinNums <> Z ind
+binder 79:86 <> pressure:1
+binder 88:94 <> free_mb:2
+R103:106 Corelib.Init.Datatypes <> bool ind
+R133:136 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R117:121 Stdlib.ZArith.BinInt Z leb def
+R123:130 dynamic_freeze <> pressure:1 var
+R137:141 Stdlib.ZArith.BinInt Z geb def
+R143:149 dynamic_freeze <> free_mb:2 var
+R176:180 Corelib.Init.Datatypes <> false constr
+R166:169 Corelib.Init.Datatypes <> true constr
+def 195:200 <> window
+R209:209 Corelib.Numbers.BinNums <> Z ind
+binder 203:205 <> cap:3
+R214:214 Corelib.Numbers.BinNums <> Z ind
+R219:223 Stdlib.ZArith.BinInt Z min def
+R225:227 dynamic_freeze <> cap:3 var
+prf 242:264 <> window_whitelist_capped
+R280:282 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R268:273 dynamic_freeze <> window def
+R301:306 dynamic_freeze <> window def
+prf 335:354 <> window_normal_capped
+R367:369 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R358:363 dynamic_freeze <> window def
+R388:393 dynamic_freeze <> window def
+prf 422:443 <> stable_at_pressure_two
+R459:461 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R447:452 dynamic_freeze <> stable def
+R462:465 Corelib.Init.Datatypes <> true constr
+R482:487 dynamic_freeze <> stable def
+prf 516:541 <> unstable_at_pressure_three
+R557:559 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R545:550 dynamic_freeze <> stable def
+R560:564 Corelib.Init.Datatypes <> false constr
+R581:586 dynamic_freeze <> stable def
+prf 615:633 <> release_when_stable
+R639:639 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R702:705 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R656:659 Corelib.Init.Datatypes <> ::bool_scope:x_'||'_x not
+R644:649 dynamic_freeze <> stable def
+R660:664 Stdlib.ZArith.BinInt Z geb def
+R697:701 Corelib.Init.Datatypes <> false constr
+R687:690 Corelib.Init.Datatypes <> true constr
+R706:709 Corelib.Init.Datatypes <> true constr
+R726:731 dynamic_freeze <> stable def

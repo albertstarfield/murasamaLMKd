@@ -1,0 +1,53 @@
+DIGEST d64173555ac5b4eaec97863a3904753b
+Fgrace_policy
+R102:107 Stdlib.ZArith.ZArith <> <> lib
+R109:111 Stdlib.micromega.Lia <> <> lib
+R113:116 Stdlib.Bool.Bool <> <> lib
+def 151:161 <> shouldGrace
+R179:179 Corelib.Numbers.BinNums <> Z ind
+binder 164:167 <> grad:1
+binder 169:172 <> free:2
+binder 174:175 <> ml:3
+R184:187 Corelib.Init.Datatypes <> bool ind
+R194:194 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R204:209 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R244:244 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R199:202 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>?'_x not
+R195:198 grace_policy <> grad:1 var
+R210:210 Corelib.Init.Datatypes <> ::bool_scope:x_'||'_x not
+R229:234 Corelib.Init.Datatypes <> ::bool_scope:x_'||'_x not
+R243:243 Corelib.Init.Datatypes <> ::bool_scope:x_'||'_x not
+R221:224 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>?'_x not
+R215:217 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R211:214 grace_policy <> grad:1 var
+R225:228 grace_policy <> free:2 var
+R237:241 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>=?'_x not
+R235:236 grace_policy <> ml:3 var
+def 259:269 <> wardenKills
+R285:288 Corelib.Init.Datatypes <> bool ind
+binder 272:281 <> holdActive:4
+R293:296 Corelib.Init.Datatypes <> bool ind
+R301:304 Corelib.Init.Datatypes <> negb def
+R306:315 grace_policy <> holdActive:4 var
+def 327:350 <> linear_prediction_graces
+R376:378 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R354:364 grace_policy <> shouldGrace def
+R379:382 Corelib.Init.Datatypes <> true constr
+def 431:445 <> ml_early_graces
+R469:471 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R449:459 grace_policy <> shouldGrace def
+R472:475 Corelib.Init.Datatypes <> true constr
+def 605:623 <> boundary_not_graced
+R647:649 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R627:637 grace_policy <> shouldGrace def
+R650:654 Corelib.Init.Datatypes <> false constr
+def 703:727 <> hold_means_no_warden_kill
+R747:749 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R731:741 grace_policy <> wardenKills def
+R743:746 Corelib.Init.Datatypes <> true constr
+R750:754 Corelib.Init.Datatypes <> false constr
+def 803:828 <> no_hold_allows_warden_kill
+R849:851 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R832:842 grace_policy <> wardenKills def
+R844:848 Corelib.Init.Datatypes <> false constr
+R852:855 Corelib.Init.Datatypes <> true constr

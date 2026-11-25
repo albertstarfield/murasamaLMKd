@@ -122,6 +122,9 @@ package MacOS_Bridge is
    procedure Run_System_Command_C (Cmd : char_array);
    pragma Import (C, Run_System_Command_C, "run_system_command_c");
 
+   procedure Run_System_Command_Popup_C (Cmd : char_array);
+   pragma Import (C, Run_System_Command_Popup_C, "run_system_command_popup_c");
+
    function Atomic_Rename_C (Old_Path : char_array; New_Path : char_array) return int;
    pragma Import (C, Atomic_Rename_C, "atomic_rename_c");
 

@@ -1,0 +1,158 @@
+DIGEST 9ff6fb47f9de2ebd0e76bbad1bfecc0e
+Fleak_killer
+R27:30 Stdlib.Bool.Bool <> <> lib
+R32:36 Stdlib.Arith.Arith <> <> lib
+R38:40 Stdlib.micromega.Lia <> <> lib
+def 55:78 <> LEAK_MIN_FOOTPRINT_BYTES
+R94:96 Corelib.Init.Peano <> ::nat_scope:x_'*'_x not
+R87:89 Corelib.Init.Peano <> ::nat_scope:x_'*'_x not
+def 114:133 <> LEAK_MIN_AGE_SECONDS
+R140:142 Corelib.Init.Peano <> ::nat_scope:x_'*'_x not
+def 160:183 <> LEAK_MAX_KILLS_PER_CYCLE
+rec 199:207 <> Candidate
+proj 216:225 <> ownerKnown
+proj 237:249 <> hasUnderscore
+proj 261:270 <> hasHomeDir
+proj 282:295 <> footprintBytes
+proj 306:315 <> ageSeconds
+R229:232 Corelib.Init.Datatypes <> bool ind
+R253:256 Corelib.Init.Datatypes <> bool ind
+R274:277 Corelib.Init.Datatypes <> bool ind
+R299:301 Corelib.Init.Datatypes <> nat ind
+R319:321 Corelib.Init.Datatypes <> nat ind
+def 338:347 <> shouldKill
+R354:362 leak_killer <> Candidate rec
+binder 350:350 <> c:7
+R376:379 Corelib.Init.Datatypes <> bool ind
+binder 366:372 <> enabled:8
+R384:387 Corelib.Init.Datatypes <> bool ind
+R565:570 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R514:520 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R564:564 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R455:461 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R513:513 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R432:435 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R406:409 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R394:403 leak_killer <> ownerKnown proj
+R405:405 leak_killer <> c:7 var
+R410:413 Corelib.Init.Datatypes <> negb def
+R416:428 leak_killer <> hasUnderscore proj
+R430:430 leak_killer <> c:7 var
+R436:439 Corelib.Init.Datatypes <> negb def
+R442:451 leak_killer <> hasHomeDir proj
+R453:453 leak_killer <> c:7 var
+R462:468 Stdlib.Arith.PeanoNat Nat ltb def
+R470:493 leak_killer <> LEAK_MIN_FOOTPRINT_BYTES def
+R496:509 leak_killer <> footprintBytes proj
+R511:511 leak_killer <> c:7 var
+R521:527 Stdlib.Arith.PeanoNat Nat ltb def
+R529:548 leak_killer <> LEAK_MIN_AGE_SECONDS def
+R551:560 leak_killer <> ageSeconds proj
+R562:562 leak_killer <> c:7 var
+R571:577 leak_killer <> enabled:8 var
+prf 587:607 <> no_kill_unknown_owner
+binder 618:618 <> c:9
+binder 620:626 <> enabled:10
+R651:654 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R643:645 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R631:640 leak_killer <> ownerKnown proj
+R642:642 leak_killer <> c:9 var
+R646:650 Corelib.Init.Datatypes <> false constr
+R675:677 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R655:664 leak_killer <> shouldKill def
+R666:666 leak_killer <> c:9 var
+R668:674 leak_killer <> enabled:10 var
+R678:682 Corelib.Init.Datatypes <> false constr
+R719:728 leak_killer <> shouldKill def
+R750:761 Stdlib.Bool.Bool <> andb_false_l thm
+prf 789:806 <> no_kill_underscore
+binder 817:817 <> c:11
+binder 819:825 <> enabled:12
+R852:855 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R845:847 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R830:842 leak_killer <> hasUnderscore proj
+R844:844 leak_killer <> c:11 var
+R848:851 Corelib.Init.Datatypes <> true constr
+R876:878 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R856:865 leak_killer <> shouldKill def
+R867:867 leak_killer <> c:11 var
+R869:875 leak_killer <> enabled:12 var
+R879:883 Corelib.Init.Datatypes <> false constr
+R920:929 leak_killer <> shouldKill def
+R958:969 Stdlib.Bool.Bool <> andb_false_r thm
+R980:991 Stdlib.Bool.Bool <> andb_false_l thm
+prf 1019:1030 <> no_kill_home
+binder 1041:1041 <> c:13
+binder 1043:1049 <> enabled:14
+R1073:1076 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1066:1068 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1054:1063 leak_killer <> hasHomeDir proj
+R1065:1065 leak_killer <> c:13 var
+R1069:1072 Corelib.Init.Datatypes <> true constr
+R1097:1099 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1077:1086 leak_killer <> shouldKill def
+R1088:1088 leak_killer <> c:13 var
+R1090:1096 leak_killer <> enabled:14 var
+R1100:1104 Corelib.Init.Datatypes <> false constr
+R1141:1150 leak_killer <> shouldKill def
+R1179:1190 Stdlib.Bool.Bool <> andb_false_r thm
+R1201:1212 Stdlib.Bool.Bool <> andb_false_l thm
+prf 1240:1252 <> no_kill_young
+binder 1263:1263 <> c:15
+binder 1265:1271 <> enabled:16
+R1312:1317 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1288:1291 Corelib.Init.Peano <> ::nat_scope:x_'<='_x not
+R1276:1285 leak_killer <> ageSeconds proj
+R1287:1287 leak_killer <> c:15 var
+R1292:1311 leak_killer <> LEAK_MIN_AGE_SECONDS def
+R1338:1340 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1318:1327 leak_killer <> shouldKill def
+R1329:1329 leak_killer <> c:15 var
+R1331:1337 leak_killer <> enabled:16 var
+R1341:1345 Corelib.Init.Datatypes <> false constr
+R1384:1393 leak_killer <> shouldKill def
+R1408:1414 Stdlib.Arith.PeanoNat Nat ltb def
+R1416:1435 leak_killer <> LEAK_MIN_AGE_SECONDS def
+R1438:1447 leak_killer <> ageSeconds proj
+R1480:1486 Stdlib.Arith.PeanoNat Nat ltb def
+R1500:1509 Stdlib.Arith.PeanoNat Nat leb_le thm
+R1534:1545 Stdlib.Bool.Bool <> andb_false_r thm
+R1556:1567 Stdlib.Bool.Bool <> andb_false_l thm
+prf 1595:1608 <> dryrun_no_kill
+binder 1619:1619 <> c:17
+R1640:1642 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1622:1631 leak_killer <> shouldKill def
+R1633:1633 leak_killer <> c:17 var
+R1635:1639 Corelib.Init.Datatypes <> false constr
+R1643:1647 Corelib.Init.Datatypes <> false constr
+R1674:1683 leak_killer <> shouldKill def
+R1696:1705 leak_killer <> ownerKnown proj
+R1747:1759 leak_killer <> hasUnderscore proj
+R1801:1810 leak_killer <> hasHomeDir proj
+R1852:1858 Stdlib.Arith.PeanoNat Nat ltb def
+R1860:1883 leak_killer <> LEAK_MIN_FOOTPRINT_BYTES def
+R1886:1899 leak_killer <> footprintBytes proj
+R1942:1948 Stdlib.Arith.PeanoNat Nat ltb def
+R1950:1969 leak_killer <> LEAK_MIN_AGE_SECONDS def
+R1972:1981 leak_killer <> ageSeconds proj
+prf 2020:2042 <> no_kill_small_footprint
+binder 2053:2053 <> c:18
+binder 2055:2061 <> enabled:19
+R2110:2115 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2082:2085 Corelib.Init.Peano <> ::nat_scope:x_'<='_x not
+R2066:2079 leak_killer <> footprintBytes proj
+R2081:2081 leak_killer <> c:18 var
+R2086:2109 leak_killer <> LEAK_MIN_FOOTPRINT_BYTES def
+R2136:2138 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2116:2125 leak_killer <> shouldKill def
+R2127:2127 leak_killer <> c:18 var
+R2129:2135 leak_killer <> enabled:19 var
+R2139:2143 Corelib.Init.Datatypes <> false constr
+R2182:2191 leak_killer <> shouldKill def
+R2206:2212 Stdlib.Arith.PeanoNat Nat ltb def
+R2214:2237 leak_killer <> LEAK_MIN_FOOTPRINT_BYTES def
+R2240:2253 leak_killer <> footprintBytes proj
+R2286:2292 Stdlib.Arith.PeanoNat Nat ltb def
+R2306:2315 Stdlib.Arith.PeanoNat Nat leb_le thm
+R2340:2351 Stdlib.Bool.Bool <> andb_false_r thm
+R2362:2373 Stdlib.Bool.Bool <> andb_false_l thm

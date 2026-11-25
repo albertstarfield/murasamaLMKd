@@ -1,0 +1,136 @@
+DIGEST de47b58512f3466b7fad20316f9857cb
+Fconfig_wiring
+R157:162 Stdlib.ZArith.ZArith <> <> lib
+R164:166 Stdlib.micromega.Lia <> <> lib
+rec 197:205 <> MemConfig
+proj 214:221 <> sys_idle
+proj 232:239 <> app_idle
+proj 250:258 <> wired_pct
+proj 268:277 <> kill_count
+proj 286:293 <> window_s
+proj 304:311 <> delay_ms
+R227:227 Corelib.Numbers.BinNums <> Z ind
+R245:245 Corelib.Numbers.BinNums <> Z ind
+R263:263 Corelib.Numbers.BinNums <> Z ind
+R281:281 Corelib.Numbers.BinNums <> Z ind
+R299:299 Corelib.Numbers.BinNums <> Z ind
+R317:317 Corelib.Numbers.BinNums <> Z ind
+def 334:340 <> desired
+R344:352 config_wiring <> MemConfig rec
+R362:369 config_wiring <> sys_idle proj
+R378:385 config_wiring <> app_idle proj
+R394:402 config_wiring <> wired_pct proj
+R416:425 config_wiring <> kill_count proj
+R433:440 config_wiring <> window_s proj
+R450:457 config_wiring <> delay_ms proj
+def 482:489 <> complete
+R496:504 config_wiring <> MemConfig rec
+binder 492:492 <> c:8
+R534:537 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R529:532 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R519:526 config_wiring <> sys_idle proj
+R528:528 config_wiring <> c:8 var
+R553:556 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R548:551 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R538:545 config_wiring <> app_idle proj
+R547:547 config_wiring <> c:8 var
+R573:578 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R568:571 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R557:565 config_wiring <> wired_pct proj
+R567:567 config_wiring <> c:8 var
+R596:599 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R591:594 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R579:588 config_wiring <> kill_count proj
+R590:590 config_wiring <> c:8 var
+R615:618 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R610:613 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R600:607 config_wiring <> window_s proj
+R609:609 config_wiring <> c:8 var
+R629:632 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R619:626 config_wiring <> delay_ms proj
+R628:628 config_wiring <> c:8 var
+def 648:661 <> matchesDesired
+R668:676 config_wiring <> MemConfig rec
+binder 664:664 <> c:9
+R699:702 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R689:696 config_wiring <> complete def
+R698:698 config_wiring <> c:9 var
+R704:706 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R703:703 config_wiring <> c:9 var
+R707:713 config_wiring <> desired def
+def 727:737 <> headChanged
+R741:749 config_wiring <> MemConfig rec
+R759:766 config_wiring <> sys_idle proj
+R775:782 config_wiring <> app_idle proj
+R791:799 config_wiring <> wired_pct proj
+R813:822 config_wiring <> kill_count proj
+R830:837 config_wiring <> window_s proj
+R847:854 config_wiring <> delay_ms proj
+def 878:887 <> daemonOwns
+R894:902 config_wiring <> MemConfig rec
+binder 890:890 <> c:10
+R927:929 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R915:924 config_wiring <> kill_count proj
+R926:926 config_wiring <> c:10 var
+def 945:953 <> validEARU
+R964:964 Corelib.Numbers.BinNums <> Z ind
+binder 956:956 <> t:11
+binder 958:958 <> h:12
+binder 960:960 <> p:13
+R988:991 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R983:986 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R987:987 config_wiring <> t:11 var
+R1000:1003 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R993:996 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R992:992 config_wiring <> t:11 var
+R1010:1013 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1005:1008 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R1009:1009 config_wiring <> h:12 var
+R1022:1025 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1015:1018 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R1014:1014 config_wiring <> h:12 var
+R1034:1037 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1029:1032 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R1033:1033 config_wiring <> p:13 var
+R1039:1042 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R1038:1038 config_wiring <> p:13 var
+def 1061:1070 <> earuUsable
+R1078:1081 Corelib.Init.Datatypes <> bool ind
+binder 1073:1074 <> ok:14
+R1093:1093 Corelib.Numbers.BinNums <> Z ind
+binder 1085:1085 <> t:15
+binder 1087:1087 <> h:16
+binder 1089:1089 <> p:17
+R1115:1118 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1108:1110 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1106:1107 config_wiring <> ok:14 var
+R1111:1114 Corelib.Init.Datatypes <> true constr
+R1119:1127 config_wiring <> validEARU def
+R1129:1129 config_wiring <> t:15 var
+R1131:1131 config_wiring <> h:16 var
+R1133:1133 config_wiring <> p:17 var
+prf 1145:1164 <> matches_implies_owns
+binder 1175:1175 <> c:18
+R1194:1197 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1178:1191 config_wiring <> matchesDesired def
+R1193:1193 config_wiring <> c:18 var
+R1198:1207 config_wiring <> daemonOwns def
+R1209:1209 config_wiring <> c:18 var
+R1279:1288 config_wiring <> daemonOwns def
+R1291:1297 config_wiring <> desired def
+prf 1400:1427 <> count_one_closes_daemon_gate
+R1433:1434 Corelib.Init.Logic <> ::type_scope:'~'_x not
+R1435:1444 config_wiring <> daemonOwns def
+R1446:1456 config_wiring <> headChanged def
+R1473:1482 config_wiring <> daemonOwns def
+prf 1520:1541 <> real_reading_is_usable
+R1545:1554 config_wiring <> earuUsable def
+R1556:1559 Corelib.Init.Datatypes <> true constr
+R1587:1596 config_wiring <> earuUsable def
+R1599:1607 config_wiring <> validEARU def
+prf 1675:1696 <> zero_pressure_rejected
+R1700:1701 Corelib.Init.Logic <> ::type_scope:'~'_x not
+R1702:1711 config_wiring <> earuUsable def
+R1713:1716 Corelib.Init.Datatypes <> true constr
+R1743:1752 config_wiring <> earuUsable def
+R1755:1763 config_wiring <> validEARU def

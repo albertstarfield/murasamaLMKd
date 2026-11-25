@@ -304,6 +304,12 @@ package Murasama_Types is
    GRACE_HOLD_SECONDS      : constant := 60;
    GRACE_MAX_SLOTS         : constant := 8;
    GRACE_MIN_GRADIENT_MB_S : constant := 5.0;
+   --  Hold-until-stable policy: a single STOP window never exceeds 60 s.
+   --  At the window edge the process is briefly CONTed and sampled; three
+   --  consecutive quiet 1 s probes are required before it is released.
+   GRACE_PROBE_SECONDS       : constant := 1;
+   GRACE_STABLE_SAMPLES      : constant := 3;
+   GRACE_MAX_WINDOW_SECONDS  : constant := 60;
    WARDEN_HOLD_DIR         : constant String :=
      "/usr/local/CriticalUIUXRespWarden/run/murasama_hold";
 
@@ -331,5 +337,50 @@ package Murasama_Types is
    function Grace_Expired (Elapsed : Duration) return Boolean
      with Post => (Grace_Expired'Result =
                    (Elapsed >= Duration (GRACE_HOLD_SECONDS)));
+
+   --  Hold-until-stable contract: release is legal only after the required
+   --  number of quiet probes AND when no user-requested long freeze is active.
+   function Grace_Release_Allowed
+     (Grad_Above_Gate : Boolean;
+      Stable_Samples  : Natural;
+      Long_Hold_Active : Boolean) return Boolean
+     with Post => (Grace_Release_Allowed'Result =
+       (not Grad_Above_Gate
+        and then Stable_Samples >= GRACE_STABLE_SAMPLES
+        and then not Long_Hold_Active));
+
+   --  Every individual STOP window must be <= 60 seconds.
+   function Grace_Window_Within_Limit
+     (Hold_Seconds : Long_Float) return Boolean
+     with Post => (Grace_Window_Within_Limit'Result =
+       (Hold_Seconds >= 0.0
+        and then Hold_Seconds <= Long_Float (GRACE_MAX_WINDOW_SECONDS)));
+
+   -- ==================== EARLY STRESS (react before freeze) ====================
+   -- Pure, syscall-free test on values the main loop already samples. 25% of
+   -- total RAM is expressed as Free_MB * 4 <= Total_RAM_MB to avoid a divide.
+   EARLY_STRESS_FREE_DIVISOR : constant := 4;
+   EARLY_ACTION_COOLDOWN_S   : constant := 10;
+   EARLY_GRADIENT_SAMPLE_MS  : constant := 50;
+   POPUP_TIMEOUT_SECONDS     : constant := 120;
+   POPUP_C_TIMEOUT_MS        : constant := 125000;
+   WHITELIST_HOLD_SECONDS    : constant := 21600;  -- 6 hours
+
+   function Is_Early_Stress
+     (Free_MB, Total_RAM_MB : Long_Float;
+      Pressure_Level, ML_Predicted : Integer) return Boolean
+     with Pre  => Total_RAM_MB >= 1.0
+                  and then Free_MB >= 0.0
+                  and then Free_MB <= 1.0E9,
+          Post => (Is_Early_Stress'Result =
+            (Pressure_Level >= 3
+             or else Free_MB < CRITICAL_FREE_MB
+             or else (Free_MB * Long_Float (EARLY_STRESS_FREE_DIVISOR)
+                      <= Total_RAM_MB
+                      and then (Pressure_Level >= 2
+                                or else ML_Predicted >= 4))));
+
+   function Should_Skip_Nonessential (Stressed : Boolean) return Boolean
+     with Post => (Should_Skip_Nonessential'Result = Stressed);
 
 end Murasama_Types;

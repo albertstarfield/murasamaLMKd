@@ -1,0 +1,11 @@
+DIGEST a087f2e7c51f20e89e99478de4e41662
+Fwhitelist_race
+R27:32 Stdlib.ZArith.ZArith <> <> lib
+R34:36 Stdlib.micromega.Lia <> <> lib
+prf 68:87 <> poll_latency_reduced
+R94:97 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+prf 129:153 <> poll_latency_below_dialog
+R160:162 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+prf 196:224 <> whitelist_window_is_six_hours
+R233:235 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R237:239 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not

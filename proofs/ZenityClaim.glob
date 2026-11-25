@@ -1,0 +1,35 @@
+DIGEST 428613d8b30b92e15064e86fec219701
+FZenityClaim
+def 11:22 <> killDecision
+R29:31 Corelib.Init.Datatypes <> nat ind
+binder 25:25 <> p:1
+R39:42 Corelib.Init.Datatypes <> bool ind
+binder 35:35 <> z:2
+R47:50 Corelib.Init.Datatypes <> bool ind
+R55:61 Corelib.Init.Nat <> leb def
+R65:65 ZenityClaim <> p:1 var
+prf 76:91 <> kill_independent
+binder 102:102 <> p:3
+binder 104:105 <> z1:4
+binder 107:108 <> z2:5
+R128:130 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R111:122 ZenityClaim <> killDecision def
+R124:124 ZenityClaim <> p:3 var
+R126:127 ZenityClaim <> z1:4 var
+R131:142 ZenityClaim <> killDecision def
+R144:144 ZenityClaim <> p:3 var
+R146:147 ZenityClaim <> z2:5 var
+R180:191 ZenityClaim <> killDecision def
+prf 220:227 <> no_block
+binder 238:238 <> p:6
+R261:263 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R241:252 ZenityClaim <> killDecision def
+R254:254 ZenityClaim <> p:6 var
+R256:260 Corelib.Init.Datatypes <> false constr
+R264:270 Corelib.Init.Nat <> leb def
+R274:274 ZenityClaim <> p:6 var
+prf 320:321 <> p4
+R345:347 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R325:336 ZenityClaim <> killDecision def
+R340:344 Corelib.Init.Datatypes <> false constr
+R348:351 Corelib.Init.Datatypes <> true constr

@@ -1,0 +1,24 @@
+project Grace_Test is
+   for Languages use ("Ada");
+   for Source_Dirs use ("src", "config",
+     "/Users/albertstarfield/.hermes/cache/scratch/cov_src");
+   for Object_Dir use "obj/grace_test";
+   for Exec_Dir use "bin/grace_test";
+   for Create_Missing_Dirs use "True";
+   for Main use ("grace_harness.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g", "-O2", "-gnatwa", "-gnatW8", "-gnat2012");
+   end Compiler;
+   package Linker is
+      for Switches ("Ada") use (
+         "-framework", "AppKit",
+         "-framework", "Foundation",
+         "-framework", "CoreGraphics",
+         "-lproc",
+         "-Wl,-syslibroot,/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+         "obj/development/macos_utils.o"
+      );
+   end Linker;
+end Grace_Test;
