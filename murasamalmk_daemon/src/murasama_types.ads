@@ -296,4 +296,40 @@ package Murasama_Types is
        (Read_OK and then Valid_EARU_Weather
          (Temperature_C, Humidity_Pct, Pressure_HPa)));
 
+   -- ==================== GRACEFUL STOP/CONT (instead of SIGKILL) ====================
+   -- Highest-gradient candidates that are predicted to overflow the machine
+   -- within the hold window (linearly extrapolated) or that ML flags early are
+   -- paused, not killed. The warden is notified per PID so it cannot mistake
+   -- the intentional STOP for an unresponsive app.
+   GRACE_HOLD_SECONDS      : constant := 60;
+   GRACE_MAX_SLOTS         : constant := 8;
+   GRACE_MIN_GRADIENT_MB_S : constant := 5.0;
+   WARDEN_HOLD_DIR         : constant String :=
+     "/usr/local/CriticalUIUXRespWarden/run/murasama_hold";
+
+   function Grace_Risk_Percent
+     (Gradient_MB_S, Total_RAM_MB : Long_Float) return Long_Float
+     with Pre  => Total_RAM_MB >= 1.0
+                  and then Gradient_MB_S >= 0.0
+                  and then Gradient_MB_S <= 1.0E6,
+          Post => (Grace_Risk_Percent'Result >= 0.0
+                   and then Grace_Risk_Percent'Result <= 99.0);
+
+   function Should_Grace
+     (Gradient_MB_S, Free_MB : Long_Float;
+      ML_Predicted : Integer) return Boolean
+     with Pre  => Gradient_MB_S >= 0.0
+                  and then Gradient_MB_S <= 1.0E6
+                  and then Free_MB >= 0.0
+                  and then Free_MB <= 1.0E9,
+          Post => (Should_Grace'Result =
+       (Gradient_MB_S > GRACE_MIN_GRADIENT_MB_S
+        and then (Gradient_MB_S * Long_Float (GRACE_HOLD_SECONDS)
+                  > Free_MB * 0.5
+                  or else ML_Predicted >= 4)));
+
+   function Grace_Expired (Elapsed : Duration) return Boolean
+     with Post => (Grace_Expired'Result =
+                   (Elapsed >= Duration (GRACE_HOLD_SECONDS)));
+
 end Murasama_Types;

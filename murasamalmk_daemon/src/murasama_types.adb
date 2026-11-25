@@ -120,4 +120,37 @@ package body Murasama_Types is
         (Temperature_C, Humidity_Pct, Pressure_HPa);
    end EARU_Usable;
 
+   function Grace_Risk_Percent
+     (Gradient_MB_S, Total_RAM_MB : Long_Float) return Long_Float
+   is
+      Raw : constant Long_Float :=
+        Gradient_MB_S * Long_Float (GRACE_HOLD_SECONDS)
+        / Total_RAM_MB * 100.0;
+   begin
+      if Raw /= Raw then
+         return 0.0;
+      elsif Raw <= 0.0 then
+         return 0.0;
+      elsif Raw >= 99.0 then
+         return 99.0;
+      end if;
+      return Raw;
+   end Grace_Risk_Percent;
+
+   function Should_Grace
+     (Gradient_MB_S, Free_MB : Long_Float;
+      ML_Predicted : Integer) return Boolean
+   is
+   begin
+      return Gradient_MB_S > GRACE_MIN_GRADIENT_MB_S
+        and then (Gradient_MB_S * Long_Float (GRACE_HOLD_SECONDS)
+                  > Free_MB * 0.5
+                  or else ML_Predicted >= 4);
+   end Should_Grace;
+
+   function Grace_Expired (Elapsed : Duration) return Boolean is
+   begin
+      return Elapsed >= Duration (GRACE_HOLD_SECONDS);
+   end Grace_Expired;
+
 end Murasama_Types;

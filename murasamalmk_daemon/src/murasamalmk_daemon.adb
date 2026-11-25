@@ -12,6 +12,7 @@ with Murasama_Telemetry; use Murasama_Telemetry;
 with Murasama_Leak_Killer;  -- parameterless Check_And_Kill: full name call
 with Murasama_Guard;
 with Murasama_Config;  -- six kern.memorystatus sysctls, read inside Ada
+with Murasama_Grace;   -- STOP/CONT grace instead of SIGKILL
 
 -- SPARK_Mode => Off: The main daemon procedure cannot be verified by SPARK because:
 --   1. Ada tasks (Async_Command_Runner, Decrement_Task, Thrashing_Task) with rendezvous
@@ -359,6 +360,32 @@ procedure Murasamalmk_Daemon is
       end;
    end Queue_Thrashing_Summary_Notification;
 
+   -- Graceful-pause notification: the process is NOT killed. The user gets
+   -- the measured gradient and a predicted risk percentage, and can decide.
+   procedure Queue_Zenity_Grace_Warning
+     (Target_Name : String; Risk_Pct, Gradient_MB_S : Long_Float)
+   is
+      UID : constant UID_T := Get_Console_UID_C;
+   begin
+      if UID = 0 then
+         return;
+      end if;
+      declare
+         UID_Str     : constant String := UID_T'Image (UID);
+         UID_Trimmed : constant String := UID_Str (UID_Str'First + 1 .. UID_Str'Last);
+         Msg         : constant String :=
+           Target_Name & " is allocating memory at " &
+           Long_Float'Image (Gradient_MB_S) & " MB/s. Predicted risk: " &
+           Long_Float'Image (Risk_Pct) & "%. It was PAUSED for 60s, not killed. Continue?";
+         Cmd         : constant String := "launchctl asuser " & UID_Trimmed &
+           " /opt/homebrew/bin/zenity --warning --text=" &
+           Shell_Quote (Msg) & " --title=" &
+           Shell_Quote ("Murasama LMKd: Graceful Pause (no kill)") & " --width=400";
+      begin
+         Runner.Enqueue (Cmd);
+      end;
+   end Queue_Zenity_Grace_Warning;
+
    -- Mitigation In / Out helpers
    -- FIX: Removed unused Front_Name_C and Front_Name variables.
    -- REASON: These were populated from Get_Process_Name_C but never read afterward.
@@ -580,6 +607,9 @@ procedure Murasamalmk_Daemon is
    -- Declared BEFORE Handle_Bloodshed because Ada nested subprograms see
    -- only enclosing declarations that precede them.
    Kill_Delay : Duration := 0.2;
+   --  Machine RAM is needed by the grace-risk predicate inside the nested
+   --  bloodshed handler, so it must be declared before that subprogram.
+   Total_RAM_MB_Global : Long_Float := 0.0;
 
    -- Bloodshed Handler
    -- DERIVATION:
@@ -601,7 +631,11 @@ procedure Murasamalmk_Daemon is
    --   Space: TOP_N_PROCESSES-sized arrays, O(1) aux state
    --   Hardware Assumptions: proc_pidinfo resident size stable enough over
    --     100ms for meaningful rate ranking
-   procedure Handle_Bloodshed (Trigger_Reason : String; Page_Size : UINT64_T) is
+   procedure Handle_Bloodshed
+     (Trigger_Reason : String;
+      Page_Size      : UINT64_T;
+      ML_Prediction  : Integer)
+   is
       MAX_KILLS : constant := 3;
       Kill_Count : Integer := 0;
 
@@ -615,6 +649,7 @@ procedure Murasamalmk_Daemon is
       Ada.Text_IO.Put_Line ("");
       Ada.Text_IO.Put_Line ("--- BLOODSHED INITIATED ---");
       Ada.Text_IO.Put_Line ("Reason: " & Trigger_Reason);
+      Free_MB := Long_Float (Get_Free_MB_C (Page_Size));
 
       -- Deprioritize blacklisted processes during bloodshed
       Deprioritize_Blacklisted_C;
@@ -787,31 +822,60 @@ procedure Murasamalmk_Daemon is
                                  Ada.Text_IO.Put_Line ("Phase: " & Phase_Desc (1 .. Phase_Len));
                                  Ada.Text_IO.Put_Line ("Target: PID " & PID_T'Image (T_PID) & " (" & T_Name & ")");
 
-                                 Queue_Zenity_Warning (T_Name, Trigger_Reason & " (" & Phase_Desc (1 .. Phase_Len) & ")");
+                                 if Rates (Target_Idx) > 0.0
+                                   and then Rates (Target_Idx) <= 1.0E6
+                                   and then Free_MB >= 0.0
+                                   and then Free_MB <= 1.0E9
+                                   and then Murasama_Types.Should_Grace
+                                     (Rates (Target_Idx), Free_MB,
+                                      ML_Prediction)
+                                 then
+                                    -- Highest-gradient candidate, predicted
+                                    -- linearly or by ML: pause, do NOT kill.
+                                    declare
+                                       Risk : constant Long_Float :=
+                                         Murasama_Grace.Risk_For
+                                           (Rates (Target_Idx), Total_RAM_MB_Global);
+                                    begin
+                                       Murasama_Grace.Begin_Hold
+                                         (T_PID, Rates (Target_Idx),
+                                          Total_RAM_MB_Global, ML_Prediction);
+                                       Queue_Zenity_Grace_Warning
+                                         (T_Name, Risk, Rates (Target_Idx));
+                                       Ada.Text_IO.Put_Line
+                                         ("[GRACE] paused PID " & PID_T'Image (T_PID) &
+                                          " instead of killing it; risk=" &
+                                          Long_Float'Image (Risk) & "%");
+                                    end;
+                                    Skipped_Count := Skipped_Count + 1;
+                                    Skipped_Pids (Skipped_Count) := T_PID;
+                                 else
+                                    Queue_Zenity_Warning (T_Name, Trigger_Reason & " (" & Phase_Desc (1 .. Phase_Len) & ")");
 
-                                  -- FIX (MURPHY'S LAW): the SIGKILL result was previously
-                                  -- discarded via pragma Unreferenced — a failed kill was
-                                  -- counted as success AND falsely incremented the kill
-                                  -- weight. Now: nonzero result → verbose report, target
-                                  -- marked skipped, no weight increment, no kill count.
-                                  declare
-                                     Kill_Result : constant int := Kill_C (T_PID, int(9)); -- SIGKILL
-                                  begin
-                                     if Kill_Result /= 0 then
-                                        Ada.Text_IO.Put_Line ("[KILL FAILED] SIGKILL on PID " &
-                                          PID_T'Image (T_PID) & " (" & T_Name & ") returned " &
-                                          int'Image (Kill_Result) & " (see errno). Not counting as killed.");
-                                        Skipped_Count := Skipped_Count + 1;
-                                        Skipped_Pids (Skipped_Count) := T_PID;
-                                     else
-                                        Kill_Count := Kill_Count + 1;
-                                        Increment_Weight (T_Name);
-                                        -- Delay from the wired-in
-                                        -- kill_on_sustained_pressure_delay_ms
-                                        delay Kill_Delay;
-                                        Killed_Something := True;
-                                     end if;
-                                  end;
+                                    -- FIX (MURPHY'S LAW): the SIGKILL result was previously
+                                    -- discarded via pragma Unreferenced — a failed kill was
+                                    -- counted as success AND falsely incremented the kill
+                                    -- weight. Now: nonzero result → verbose report, target
+                                    -- marked skipped, no weight increment, no kill count.
+                                    declare
+                                       Kill_Result : constant int := Kill_C (T_PID, int(9)); -- SIGKILL
+                                    begin
+                                       if Kill_Result /= 0 then
+                                          Ada.Text_IO.Put_Line ("[KILL FAILED] SIGKILL on PID " &
+                                            PID_T'Image (T_PID) & " (" & T_Name & ") returned " &
+                                            int'Image (Kill_Result) & " (see errno). Not counting as killed.");
+                                          Skipped_Count := Skipped_Count + 1;
+                                          Skipped_Pids (Skipped_Count) := T_PID;
+                                       else
+                                          Kill_Count := Kill_Count + 1;
+                                          Increment_Weight (T_Name);
+                                          -- Delay from the wired-in
+                                          -- kill_on_sustained_pressure_delay_ms
+                                          delay Kill_Delay;
+                                          Killed_Something := True;
+                                       end if;
+                                    end;
+                                 end if;
                               end if;
                            exception
                               when others =>
@@ -1211,7 +1275,6 @@ procedure Murasamalmk_Daemon is
    -- Wired inside this program: six live kern.memorystatus values and the
    -- delays/ownership they imply. No external config file, no sidecar.
    Memstatus           : Murasama_Types.Memorystatus_Config;
-   Total_RAM_MB_Global : Long_Float := 0.0;
 
    ML_Predicted_Pressure : Integer := 1;
    ML_Risk_Level : String (1 .. 10) := (others => ' ');
@@ -1318,6 +1381,10 @@ begin
       Current_Free_MB := Long_Float (Get_Free_MB_C (Page_Size));
       Current_Wired_MB := Long_Float (Get_Wired_MB_C (Page_Size));
       Current_Pressure := Clamp_Pressure_Level (Integer (Get_Memory_Pressure_Level_C));
+
+      -- Grace cycle check: 60s STOP expiry, CONT, gradient recheck and
+      -- repeat STOP if the process is still climbing. Never kills.
+      Murasama_Grace.Service;
 
       declare
          Now : Time := Clock;
@@ -1668,7 +1735,9 @@ begin
               and then Murasama_Types.Daemon_Owns_Sustained_Kills (Memstatus)
               and then not Mitigation_State.Is_Mitigating
             then
-               Handle_Bloodshed (Trigger_Reason (1 .. Trigger_Len), Page_Size);
+               Handle_Bloodshed
+                 (Trigger_Reason (1 .. Trigger_Len), Page_Size,
+                  ML_Predicted_Pressure);
                Now := Clock;
                Current_Free_MB := Long_Float (Get_Free_MB_C (Page_Size));
                Current_Pressure := Integer (Get_Memory_Pressure_Level_C);
