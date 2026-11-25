@@ -19,3 +19,6 @@ gnatprove = "^15.1.0"
 [[actions]]
 type = "pre-build"
 command = ["sh", "scripts/build_macos_utils.sh"]
+
+[[depends-on]]
+gnatcov = "^26.2.1"

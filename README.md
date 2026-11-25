@@ -31,7 +31,7 @@ Thresholds are defined in `murasamalmk_daemon/src/murasama_types.ads`:
 | Constant | Value | Description |
 |---|---|---|
 | `CRITICAL_FREE_MB` | 128.0 | Free memory threshold (MB) |
-| `PANIC_VELOCITY_MB_S` | dynamic = 75% of machine total RAM (MB) | Wired memory velocity trigger (MB/s), detected at runtime via `get_total_ram_mb_c` (fallback 21000.0 * 0.75) |
+| `PANIC_VELOCITY_MB_S` | dynamic = 75% of machine total RAM (MB) | Wired memory velocity trigger (MB/s), detected at runtime via `get_total_ram_mb_c`; there is no hardcoded 21000 MB fallback — if detection fails the velocity gate is disabled and logged |
 | `THRASHING_THRESHOLD_PAGEINS` | 500 | Pageins/s to trigger thrashing mitigation |
 | `THRASHING_THRESHOLD_DECOMP` | 10000 | Decompressions/s to trigger thrashing mitigation |
 | `MIN_PRESSURE_LEVEL_TO_KILL` | 4 | Minimum OS pressure level for bloodshed |

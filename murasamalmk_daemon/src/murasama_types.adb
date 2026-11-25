@@ -71,4 +71,53 @@ package body Murasama_Types is
       return Integer'Max (1, Integer'Min (Level, 5));
    end Clamp_Pressure_Level;
 
+   function Config_Complete (C : Memorystatus_Config) return Boolean is
+   begin
+      return C.Sysprocs_Idle_Delay_NS >= 0
+        and then C.Apps_Idle_Delay_NS >= 0
+        and then C.Wired_Max_Proc_Pct >= 0
+        and then C.Kill_Sustained_Count >= 0
+        and then C.Kill_Window_Seconds >= 0
+        and then C.Kill_Delay_MS >= 0;
+   end Config_Complete;
+
+   function Config_Matches_Desired (C : Memorystatus_Config) return Boolean is
+   begin
+      return Config_Complete (C)
+        and then C.Sysprocs_Idle_Delay_NS = MEMORYSTATUS_SYSPROCS_IDLE_DELAY_NS
+        and then C.Apps_Idle_Delay_NS = MEMORYSTATUS_APPS_IDLE_DELAY_NS
+        and then C.Wired_Max_Proc_Pct = MEMORYSTATUS_WIRED_MAX_PROC_PCT
+        and then C.Kill_Sustained_Count = MEMORYSTATUS_KILL_SUSTAINED_COUNT
+        and then C.Kill_Window_Seconds = MEMORYSTATUS_KILL_WINDOW_SECONDS
+        and then C.Kill_Delay_MS = MEMORYSTATUS_KILL_DELAY_MS;
+   end Config_Matches_Desired;
+
+   function Daemon_Owns_Sustained_Kills (C : Memorystatus_Config) return Boolean is
+   begin
+      return C.Kill_Sustained_Count = 0;
+   end Daemon_Owns_Sustained_Kills;
+
+   function Kill_Delay_Seconds (C : Memorystatus_Config) return Long_Float is
+   begin
+      return Long_Float (C.Kill_Delay_MS) / 1000.0;
+   end Kill_Delay_Seconds;
+
+   function Valid_EARU_Weather
+     (Temperature_C, Humidity_Pct, Pressure_HPa : Long_Float) return Boolean
+   is
+   begin
+      return Temperature_C >= -100.0 and then Temperature_C <= 100.0
+        and then Humidity_Pct >= 0.0 and then Humidity_Pct <= 100.0
+        and then Pressure_HPa >= 500.0 and then Pressure_HPa <= 1100.0;
+   end Valid_EARU_Weather;
+
+   function EARU_Usable
+     (Read_OK : Boolean;
+      Temperature_C, Humidity_Pct, Pressure_HPa : Long_Float) return Boolean
+   is
+   begin
+      return Read_OK and then Valid_EARU_Weather
+        (Temperature_C, Humidity_Pct, Pressure_HPa);
+   end EARU_Usable;
+
 end Murasama_Types;

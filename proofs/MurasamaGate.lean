@@ -40,6 +40,14 @@ theorem all_checks_total : 54 + 15 = 69 := by
 theorem kill_cap_ok : 4 > 0 ∧ 4 ≤ 16 := by
   decide
 
--- 9. Fallback panic threshold (used when RAM detection fails) is positive.
-theorem fallback_panic_threshold_positive : 21000 > 0 := by
-  decide
+-- 9. Panic threshold comes from MACHINE TOTAL RAM (MB), never a hardcoded
+--    21000 MB. A positive machine total gives a positive 75% threshold.
+def panic_threshold (machine_total_ram_mb : Nat) : Nat :=
+  machine_total_ram_mb * 3 / 4
+
+theorem fallback_panic_threshold_positive (machine_total_ram_mb : Nat)
+    (h : machine_total_ram_mb >= 4) :
+    panic_threshold machine_total_ram_mb > 0 := by
+  unfold panic_threshold
+  have h4 : 4 <= machine_total_ram_mb * 3 := by omega
+  exact Nat.div_pos h4 (by decide : 0 < 4)

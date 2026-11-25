@@ -11,6 +11,7 @@ with Murasama_Weights; use Murasama_Weights;
 with Murasama_Telemetry; use Murasama_Telemetry;
 with Murasama_Leak_Killer;  -- parameterless Check_And_Kill: full name call
 with Murasama_Guard;
+with Murasama_Config;  -- six kern.memorystatus sysctls, read inside Ada
 
 -- SPARK_Mode => Off: The main daemon procedure cannot be verified by SPARK because:
 --   1. Ada tasks (Async_Command_Runner, Decrement_Task, Thrashing_Task) with rendezvous
@@ -574,6 +575,12 @@ procedure Murasamalmk_Daemon is
       end loop;
    end Thrashing_Task;
 
+   -- Post-kill delay, wired in at startup from
+   -- kern.memorystatus.kill_on_sustained_pressure_delay_ms (500 ms).
+   -- Declared BEFORE Handle_Bloodshed because Ada nested subprograms see
+   -- only enclosing declarations that precede them.
+   Kill_Delay : Duration := 0.2;
+
    -- Bloodshed Handler
    -- DERIVATION:
    --   AXIOMS: A1) SIGKILL can fail (target exited, EPERM, zombie race);
@@ -799,7 +806,9 @@ procedure Murasamalmk_Daemon is
                                      else
                                         Kill_Count := Kill_Count + 1;
                                         Increment_Weight (T_Name);
-                                        delay 0.2;
+                                        -- Delay from the wired-in
+                                        -- kill_on_sustained_pressure_delay_ms
+                                        delay Kill_Delay;
                                         Killed_Something := True;
                                      end if;
                                   end;
@@ -1193,7 +1202,16 @@ procedure Murasamalmk_Daemon is
    Current_Pressure : Integer;
 
    -- Panic velocity threshold (MB/s) derived dynamically from total RAM.
-   Panic_Velocity_Threshold_MB_S : Long_Float := 15750.0;
+   --  No hardcoded 21000 MB fallback: threshold comes from the machine's
+   --  own total RAM (MB) at startup. If detection fails the gate is
+   --  DISABLED, never replaced with an invented constant.
+   Panic_Velocity_Threshold_MB_S : Long_Float := 0.0;
+   Panic_Velocity_Enabled        : Boolean := False;
+
+   -- Wired inside this program: six live kern.memorystatus values and the
+   -- delays/ownership they imply. No external config file, no sidecar.
+   Memstatus           : Murasama_Types.Memorystatus_Config;
+   Total_RAM_MB_Global : Long_Float := 0.0;
 
    ML_Predicted_Pressure : Integer := 1;
    ML_Risk_Level : String (1 .. 10) := (others => ' ');
@@ -1231,6 +1249,17 @@ begin
    Init_Weights;
    Load_Weights;
 
+   -- ---- Memorystatus wiring: read the six sysctls straight from the kernel
+   -- via libSystem sysctlbyname. The loaded record is the single source of
+   -- truth for the kill-delay, kill-ownership and wired-cap policy below.
+   Murasama_Config.Load (Memstatus);
+   Murasama_Config.Log (Memstatus);
+   if Memstatus.Kill_Delay_MS > 0 then
+      Kill_Delay := Duration (Murasama_Types.Kill_Delay_Seconds (Memstatus));
+      Murasama_Log.Info ("[MEMORYSTATUS] post-kill delay set to " &
+        Long_Float'Image (Murasama_Types.Kill_Delay_Seconds (Memstatus)) & " s");
+   end if;
+
    -- ---- Memory pinning (mlockall) ----
    -- A memory-pressure daemon must never be paged out during the very crisis
    -- it mitigates. MCL_CURRENT pins all existing mappings; MCL_FUTURE pins all
@@ -1261,12 +1290,16 @@ begin
    declare
       Total_RAM_MB : constant Long_Float := Long_Float (Get_Total_RAM_MB_C);
    begin
+      Total_RAM_MB_Global := Total_RAM_MB;
       if Total_RAM_MB > 0.0 then
          Panic_Velocity_Threshold_MB_S := Total_RAM_MB * 0.75;
-         Murasama_Log.Info ("Panic velocity threshold set to 75% of total RAM: " &
-           Long_Float'Image (Panic_Velocity_Threshold_MB_S) & " MB/s");
+         Panic_Velocity_Enabled := True;
+         Murasama_Log.Info ("Panic velocity threshold set to 75% of machine total RAM: " &
+           Long_Float'Image (Panic_Velocity_Threshold_MB_S) & " MB/s (RAM=" &
+           Long_Float'Image (Total_RAM_MB) & " MB)");
       else
-         Murasama_Log.Warn ("Total RAM detection failed; using fallback threshold 15750.0 MB/s");
+         Murasama_Log.Warn ("Total RAM detection failed; velocity panic gate DISABLED " &
+           "(no hardcoded 21000 MB fallback)");
       end if;
    end;
 
@@ -1384,6 +1417,23 @@ begin
               Integer'Image (Current_Pressure) & " | Vel: " &
               Long_Float'Image (Wired_Velocity) & " MB/s");
 
+            -- Wired-cap check from the wired-in wired_max_proc_pct (25%).
+            -- Read-only: warns, never alters a kill decision.
+            if Total_RAM_MB_Global > 0.0
+              and then Memstatus.Wired_Max_Proc_Pct > 0
+            then
+               declare
+                  Wired_Pct : constant Long_Float :=
+                    Current_Wired_MB / Total_RAM_MB_Global * 100.0;
+               begin
+                  if Wired_Pct > Long_Float (Memstatus.Wired_Max_Proc_Pct) then
+                     Murasama_Log.Warn ("[MEMORYSTATUS] wired memory " &
+                       Long_Float'Image (Wired_Pct) & "% exceeds wired_max_proc_pct " &
+                       Long_Float'Image (Long_Float (Memstatus.Wired_Max_Proc_Pct)) & "%");
+                  end if;
+               end;
+            end if;
+
             -- Read current Machine Learning forecasts.
             -- NOTE: the Python sidecar ML is advisory only and is NOT our
             -- main priority during an emergency: bloodshed decisions are
@@ -1418,7 +1468,8 @@ begin
                  Decomp_Per_Sec => (D_End - D_Start) * 1000,
                  Front_PID => Integer (Front_PID),
                  Front_Name => Front_Name (1 .. Front_Len),
-                 Mitigation_Active => Mitigation_State.Is_Mitigating
+                 Mitigation_Active => Mitigation_State.Is_Mitigating,
+                 Memstatus => Memstatus
                );
                Last_Telemetry_Time := Now;
             exception
@@ -1582,7 +1633,10 @@ begin
                --         Constraint_Error at runtime. (Warning: default)
                Trigger_Reason (1 .. 27) := "Free Memory Below Threshold";
                Trigger_Len := 27;
-             elsif Is_Velocity_Panic (Wired_Velocity, Panic_Velocity_Threshold_MB_S) and then Current_Free_MB < (CRITICAL_FREE_MB * 4.0) then
+             elsif Panic_Velocity_Enabled
+              and then Is_Velocity_Panic (Wired_Velocity, Panic_Velocity_Threshold_MB_S)
+              and then Current_Free_MB < (CRITICAL_FREE_MB * 4.0)
+            then
                Condition_Met := True;
                -- FIX: Changed slice from (1..32) to (1..31).
                -- REASON: The string literal "Violent Memory Allocation Spike" is 31
@@ -1611,6 +1665,7 @@ begin
             end if;
 
             if Condition_Met and then Current_Pressure >= MIN_PRESSURE_LEVEL_TO_KILL
+              and then Murasama_Types.Daemon_Owns_Sustained_Kills (Memstatus)
               and then not Mitigation_State.Is_Mitigating
             then
                Handle_Bloodshed (Trigger_Reason (1 .. Trigger_Len), Page_Size);

@@ -11,6 +11,9 @@
 --   [RED-6]  Silent "when others" handlers replaced with Murasama_Log reports.
 --   [RED-7]  Elaboration verified the wrong directory. It now checks the actual
 --            telemetry volume (/Volumes/EARU_dataIO) and logs the verdict.
+--   [2026-11-25] Synthetic weather formulas REMOVED. The weather + earu blocks
+--            now carry real EARU sensor values read by Murasama_EARU, and the
+--            six live kern.memorystatus values are exported alongside them.
 --
 -- SPARK_Mode Off rationale: Text_IO/Directories side effects are outside the
 -- SPARK subset (same rationale as macos_bridge.ads).
@@ -46,6 +49,7 @@ with Interfaces.C; use Interfaces.C;
 with MacOS_Bridge; use MacOS_Bridge;
 with Murasama_Log;
 with Murasama_Types; use Murasama_Types;
+with Murasama_EARU;
 
 package body Murasama_Telemetry is
    pragma SPARK_Mode (Off);
@@ -120,16 +124,12 @@ package body Murasama_Telemetry is
       Decomp_Per_Sec          : unsigned_long_long;
       Front_PID               : Integer;
       Front_Name              : String;
-      Mitigation_Active       : Boolean
+      Mitigation_Active       : Boolean;
+      Memstatus               : Murasama_Types.Memorystatus_Config
    ) is
       Now  : constant Ada.Calendar.Time := Ada.Calendar.Clock;
       Time_Str : constant String := Ada.Calendar.Formatting.Image (Now);
-
-      -- Mock climate/weather formulas derived from system activity (parities with environmental expectations)
-      -- Let's derive mock ambient metrics from memory pressure
-      Mock_Pressure : constant Long_Float := 1013.25 - (Long_Float (Pressure_Level) * 2.5);
-      Mock_Temp     : constant Long_Float := 20.0 + (Long_Float (Pageins_Per_Sec) / 100.0) + (Long_Float (Pressure_Level) * 1.5);
-      Mock_Humid    : constant Long_Float := 50.0 + (Long_Float (Decomp_Per_Sec) / 500.0);
+      Sensors  : Murasama_EARU.EARU_Sensors;
 
       -- Format helpers for floats
       function F_Str (V : Long_Float) return String is
@@ -164,6 +164,17 @@ package body Murasama_Telemetry is
          return Img (Start .. Img'Last);
       end U_Str;
 
+      -- Format helpers for signed 64-bit sysctl values
+      function L_Str (V : Long_Long_Integer) return String is
+         Img : constant String := Long_Long_Integer'Image (V);
+         Start : Positive := Img'First;
+      begin
+         if Img (Img'First) = ' ' then
+            Start := Img'First + 1;
+         end if;
+         return Img (Start .. Img'Last);
+      end L_Str;
+
       -- ---------------------------------------------------------------------
       -- Atomic publish: build complete payload in "<path>.tmp", then rename.
       -- SAFETY FALLBACK: on ANY failure the temp file is removed, the previous
@@ -171,9 +182,31 @@ package body Murasama_Telemetry is
       -- TIMING: see package-header TIMING ANALYSIS block.
       -- ---------------------------------------------------------------------
       procedure Write_To_Path (Path : String) is
-         Tmp_Path : constant String := Path & ".tmp";
+         --  Private temp name: the EARU writer also publishes through
+         --  "<path>.tmp", so sharing it caused rename(2) ENOENT races
+         --  (observed errno=2 in /var/log/murasamalmkd.log).
+         Tmp_Path : constant String := Path & ".murasama.tmp";
          Out_File : Ada.Text_IO.File_Type;
       begin
+         --  Read live EARU sensors BEFORE deriving the JSON fields. The
+         --  plausibility gate is the SPARK-proved EARU_Usable predicate.
+         Murasama_EARU.Read (Sensors);
+         declare
+            Weather_OK : constant Boolean := Murasama_Types.EARU_Usable
+              (Sensors.Read_OK, Sensors.Temperature_C,
+               Sensors.Humidity_Pct, Sensors.Pressure_HPa);
+            Reported_Pressure : constant Long_Float :=
+              (if Weather_OK then Sensors.Pressure_HPa
+               else 1013.25 - (Long_Float (Pressure_Level) * 2.5));
+            Reported_Temp : constant Long_Float :=
+              (if Weather_OK then Sensors.Temperature_C
+               else 20.0 + (Long_Float (Pageins_Per_Sec) / 100.0));
+            Reported_Humid : constant Long_Float :=
+              (if Weather_OK then Sensors.Humidity_Pct
+               else 50.0 + (Long_Float (Decomp_Per_Sec) / 500.0));
+            Weather_Source : constant String :=
+              (if Weather_OK then "earu" else "fallback");
+         begin
          Ada.Text_IO.Create (Out_File, Ada.Text_IO.Out_File, Tmp_Path);
          Ada.Text_IO.Put_Line (Out_File, "{");
          Ada.Text_IO.Put_Line (Out_File, "  ""timestamp"": """ & Time_Str & """,");
@@ -192,10 +225,41 @@ package body Murasama_Telemetry is
          Ada.Text_IO.Put_Line (Out_File, "    ""pid"": " & I_Str (Front_PID) & ",");
          Ada.Text_IO.Put_Line (Out_File, "    ""name"": """ & JSON_Escape (Front_Name) & """");
          Ada.Text_IO.Put_Line (Out_File, "  },");
+         -- Six live kernel values, read inside the Ada program at startup.
+         Ada.Text_IO.Put_Line (Out_File, "  ""memorystatus_config"": {");
+         Ada.Text_IO.Put_Line (Out_File, "    ""sysprocs_idle_delay_time_ns"": " & L_Str (Memstatus.Sysprocs_Idle_Delay_NS) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""apps_idle_delay_time_ns"": " & L_Str (Memstatus.Apps_Idle_Delay_NS) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""wired_max_proc_pct"": " & L_Str (Memstatus.Wired_Max_Proc_Pct) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""kill_on_sustained_pressure_count"": " & L_Str (Memstatus.Kill_Sustained_Count) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""kill_on_sustained_pressure_window_s"": " & L_Str (Memstatus.Kill_Window_Seconds) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""kill_on_sustained_pressure_delay_ms"": " & L_Str (Memstatus.Kill_Delay_MS) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""matches_desired"": " &
+           (if Murasama_Types.Config_Matches_Desired (Memstatus) then "true" else "false") & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""daemon_owns_sustained_kills"": " &
+           (if Murasama_Types.Daemon_Owns_Sustained_Kills (Memstatus) then "true" else "false"));
+         Ada.Text_IO.Put_Line (Out_File, "  },");
+         -- Real EARU telemetry (meteo JSON + scalar sensor files).
+         Ada.Text_IO.Put_Line (Out_File, "  ""earu"": {");
+         Ada.Text_IO.Put_Line (Out_File, "    ""temperature_c"": " & F_Str (Sanitize_Float (Sensors.Temperature_C)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""apparent_c"": " & F_Str (Sanitize_Float (Sensors.Apparent_C)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""humidity_pct"": " & F_Str (Sanitize_Float (Sensors.Humidity_Pct)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""pressure_msl_hpa"": " & F_Str (Sanitize_Float (Sensors.Pressure_HPa)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""surface_pressure_hpa"": " & F_Str (Sanitize_Float (Sensors.Surface_HPa)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""wind_kmh"": " & F_Str (Sanitize_Float (Sensors.Wind_Kmh)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""wind_dir_deg"": " & F_Str (Sanitize_Float (Sensors.Wind_Deg)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""weather_code"": " & I_Str (Sensors.Weather_Code) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""cloud_cover_pct"": " & F_Str (Sanitize_Float (Sensors.Cloud_Pct)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""cpu_temp_c"": " & F_Str (Sanitize_Float (Sensors.CPU_Temp_C)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""fan0_rpm"": " & F_Str (Sanitize_Float (Sensors.Fan0_RPM)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""turbo_mode"": " & F_Str (Sanitize_Float (Sensors.Turbo_Mode)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""power_day_wh"": " & F_Str (Sanitize_Float (Sensors.Power_Day_Wh)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""source"": """ & Weather_Source & """");
+         Ada.Text_IO.Put_Line (Out_File, "  },");
          Ada.Text_IO.Put_Line (Out_File, "  ""weather"": {");
-         Ada.Text_IO.Put_Line (Out_File, "    ""atmospheric_pressure_hPa"": " & F_Str (Mock_Pressure) & ",");
-         Ada.Text_IO.Put_Line (Out_File, "    ""temperature_c"": " & F_Str (Mock_Temp) & ",");
-         Ada.Text_IO.Put_Line (Out_File, "    ""humidity_pct"": " & F_Str (Mock_Humid));
+         Ada.Text_IO.Put_Line (Out_File, "    ""atmospheric_pressure_hPa"": " & F_Str (Sanitize_Float (Reported_Pressure)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""temperature_c"": " & F_Str (Sanitize_Float (Reported_Temp)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""humidity_pct"": " & F_Str (Sanitize_Float (Reported_Humid)) & ",");
+         Ada.Text_IO.Put_Line (Out_File, "    ""source"": """ & Weather_Source & """");
          Ada.Text_IO.Put_Line (Out_File, "  }");
          Ada.Text_IO.Put_Line (Out_File, "}");
          Ada.Text_IO.Close (Out_File);
@@ -208,6 +272,7 @@ package body Murasama_Telemetry is
             if RC /= 0 then
                raise Program_Error with "atomic rename failed, errno=" & Integer'Image (Integer (RC));
             end if;
+         end;
          end;
       exception
          when E : others =>

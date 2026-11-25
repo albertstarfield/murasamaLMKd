@@ -1,0 +1,15 @@
+project Coverage is
+   for Languages use ("Ada");
+   for Source_Dirs use ("src", "config",
+     "/Users/albertstarfield/.hermes/cache/scratch/cov_src");
+   for Object_Dir use "obj/coverage";
+   for Exec_Dir use "bin/coverage";
+   for Create_Missing_Dirs use "True";
+   for Main use ("cov_harness.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g", "-O0", "-gnatwa", "-gnatW8", "-gnat2012");
+   end Compiler;
+
+end Coverage;
